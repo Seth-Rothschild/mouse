@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pseudo Mouse</title>
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            display: flex;
+            font-family: sans-serif;
+            background: #f0f0f0;
+            margin: 0;
+        }
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sidebar {
+            box-sizing: border-box;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 12px;
+            background: #e4e4e4;
+            border-left: 2px solid #ccc;
+        }
+        canvas {
+            background: #fdf6e3;
+            border-radius: 8px;
+            border: 4px solid #333;
+        }
+        #message {
+            margin-top: 12px;
+            min-height: 28px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #27ae60;
+        }
+        #message.pop {
+            animation: message-pop 0.5s ease;
+        }
+        @keyframes message-pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+        #sequence-display {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-content: flex-start;
+            box-sizing: border-box;
+            width: 278px;
+            flex: 1;
+            min-height: 0;
+            padding: 12px 8px;
+            overflow-y: auto;
+        }
+        .slot {
+            box-sizing: border-box;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 3px dashed #999;
+            background: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .slot.filled {
+            border-style: solid;
+            border-color: #333;
+        }
+        .slot.routine {
+            border-radius: 12px;
+            font-size: 24px;
+        }
+        .slot.pop-in {
+            animation: slot-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes slot-pop {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.25); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+        .slot.selected {
+            transform: translateY(-4px);
+            box-shadow: 0 0 0 4px #fff, 0 0 0 7px #0074d9;
+        }
+        .slot.active {
+            border-style: solid;
+            border-color: #333;
+            box-shadow: 0 0 0 4px #fff, 0 0 0 7px #333;
+        }
+        .tray-actions {
+            flex-shrink: 0;
+            margin-top: 12px;
+            display: flex;
+            gap: 16px;
+        }
+        .tray-actions.hidden {
+            visibility: hidden;
+        }
+        #btn-delete { background: #ff4136; }
+        #btn-save { background: #0074d9; }
+        .controls {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 72px);
+            grid-template-rows: repeat(3, 72px);
+            gap: 10px;
+        }
+        .control {
+            border: none;
+            border-radius: 16px;
+            font-size: 30px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .control:active, .control.pressed {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+        }
+        .control:disabled {
+            cursor: default;
+            opacity: 0.4;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.15);
+        }
+        #btn-forward { grid-column: 2; grid-row: 1; background: #3498db; border-radius: 50% 50% 16px 16px; }
+        #btn-left { grid-column: 1; grid-row: 2; background: #E67E22; border-radius: 50% 16px 16px 50%; }
+        #btn-go { grid-column: 2; grid-row: 2; background: #2ecc40; border-radius: 50%; font-size: 20px; }
+        #btn-right { grid-column: 3; grid-row: 2; background: #9b59b6; border-radius: 16px 50% 50% 16px; }
+        #btn-backward { grid-column: 2; grid-row: 3; background: #ffdc00; border-radius: 16px 16px 50% 50%; }
+        .action-row {
+            margin-top: 14px;
+            display: flex;
+            gap: 16px;
+        }
+        .action-button {
+            width: 120px;
+            height: 56px;
+            border: none;
+            border-radius: 14px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .action-button:active, .action-button.pressed {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+        }
+        .action-button:disabled {
+            cursor: default;
+            opacity: 0.4;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.15);
+        }
+        #btn-squeak { background: #ff4136; }
+        #btn-reset { background: #ffdc00; color: #333; }
+        #routine-row {
+            margin-top: 22px;
+            display: flex;
+            gap: 14px;
+        }
+        .routine-holder {
+            position: relative;
+        }
+        .routine-holder.pop-in {
+            animation: slot-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .routine-button {
+            box-sizing: border-box;
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+        }
+        .routine-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px;
+            border: 3px solid #333;
+            cursor: pointer;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .routine-button:active, .routine-button.pressed {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+        }
+        .routine-button:disabled {
+            cursor: default;
+            opacity: 0.4;
+        }
+        .routine-icon {
+            font-size: 30px;
+            line-height: 1;
+        }
+        .routine-preview {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2px;
+            max-height: 24px;
+            overflow: hidden;
+        }
+        .preview-dot {
+            box-sizing: border-box;
+            width: 11px;
+            height: 11px;
+            border: 1px solid #333;
+            border-radius: 50%;
+        }
+        .routine-forget {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 26px;
+            height: 26px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            background: #888;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .routine-forget:disabled {
+            visibility: hidden;
+        }
+        .routine-empty {
+            box-sizing: border-box;
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+            border: 3px dashed #ccc;
+        }
+        #routine-row.hidden {
+            display: none;
+        }
+        .mode-picker {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .mode-button {
+            padding: 6px 14px;
+            border: 3px solid #333;
+            border-radius: 12px;
+            background: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .mode-button.active {
+            background: #2ecc40;
+            color: #fff;
+        }
+        #level-counter {
+            margin-top: -8px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-area">
+        <h1>Pseudo Mouse</h1>
+        <div id="level-counter">Levels found: 0</div>
+        <div class="mode-picker">
+            <button class="mode-button" data-mode="tutorial">Tutorial</button>
+            <button class="mode-button" data-mode="puzzle">Puzzle</button>
+        </div>
+        <canvas id="game" width="600" height="440"></canvas>
+        <div id="message"></div>
+        <div class="controls">
+            <button class="control" id="btn-forward" title="Step forward">&#8593;</button>
+            <button class="control" id="btn-left" title="Turn left">&#8630;</button>
+            <button class="control" id="btn-go" title="Run program">GO</button>
+            <button class="control" id="btn-right" title="Turn right">&#8631;</button>
+            <button class="control" id="btn-backward" title="Step backward">&#8595;</button>
+        </div>
+        <div class="action-row">
+            <button class="action-button" id="btn-squeak" title="Squeak">SQUEAK</button>
+            <button class="action-button" id="btn-reset">RESET</button>
+        </div>
+        <div id="routine-row"></div>
+    </div>
+    <div class="sidebar">
+        <div id="sequence-display"></div>
+        <div class="tray-actions" id="tray-actions">
+            <button class="action-button" id="btn-delete" title="Throw away the picked steps">DELETE</button>
+            <button class="action-button" id="btn-save" title="Save the picked steps as a new button">SAVE</button>
+        </div>
+    </div>
+    <script src="board.js"></script>
+    <script src="mouse.js"></script>
+    <script src="maze.js"></script>
+    <script src="index.js"></script>
+</body>
+</html>
