@@ -171,6 +171,88 @@
             font-weight: 500;
             opacity: 0.75;
         }
+        .top-bar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .settings-menu {
+            position: relative;
+        }
+        .settings-chip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: 3px solid var(--ink);
+            border-radius: 999px;
+            background: #fff;
+            color: var(--ink);
+            cursor: pointer;
+            box-shadow: 0 3px 0 var(--ink);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .settings-chip:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 var(--ink);
+        }
+        .settings-chip .icon {
+            width: 20px;
+            height: 20px;
+            stroke-width: 2.5;
+        }
+        .settings-panel {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            z-index: 10;
+            width: 240px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: #fff;
+            border: 3px solid var(--ink);
+            border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        }
+        .settings-panel[hidden] {
+            display: none;
+        }
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .setting-name {
+            font-size: 17px;
+            font-weight: 600;
+        }
+        .segmented {
+            display: flex;
+            padding: 3px;
+            gap: 3px;
+            background: var(--page);
+            border-radius: 999px;
+        }
+        .segment {
+            min-width: 44px;
+            padding: 6px 10px;
+            border: none;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--ink);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .segment.active {
+            background: var(--go);
+            color: #fff;
+        }
 
         .board-frame {
             flex-shrink: 0;
@@ -653,6 +735,13 @@
                 font-size: 15px;
                 padding: 4px 12px 4px 14px;
             }
+            .top-bar-actions {
+                gap: 8px;
+            }
+            .settings-chip {
+                width: 34px;
+                height: 34px;
+            }
             .hud {
                 height: 30px;
                 font-size: 14px;
@@ -809,29 +898,53 @@
             <symbol id="icon-squeak" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
             <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 4v5h5"/><path d="M4.5 9A8 8 0 1 1 4 13"/></symbol>
             <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+            <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M3 6h4M11 6h10M3 12h10M17 12h4M3 18h2M9 18h12"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></symbol>
         </defs>
     </svg>
     <div class="main-area">
         <header class="top-bar">
             <h1 class="title">Pseudo Mouse</h1>
-            <div class="mode-menu">
-                <button class="mode-chip" id="mode-chip" aria-haspopup="true" aria-expanded="false">
-                    <span id="mode-chip-label">Tutorial</span>
-                    <svg class="icon"><use href="#icon-chevron"/></svg>
-                </button>
-                <div class="mode-list" id="mode-list" hidden>
-                    <button class="mode-option" data-mode="tutorial">
-                        <span class="mode-option-name">Tutorial</span>
-                        <span class="mode-option-blurb">Find the cheese on an open board</span>
+            <div class="top-bar-actions">
+                <div class="mode-menu">
+                    <button class="mode-chip" id="mode-chip" aria-haspopup="true" aria-expanded="false">
+                        <span id="mode-chip-label">Tutorial</span>
+                        <svg class="icon"><use href="#icon-chevron"/></svg>
                     </button>
-                    <button class="mode-option" data-mode="puzzle">
-                        <span class="mode-option-name">Puzzle</span>
-                        <span class="mode-option-blurb">Walls, tunnels, bridges and belts</span>
+                    <div class="mode-list" id="mode-list" hidden>
+                        <button class="mode-option" data-mode="tutorial">
+                            <span class="mode-option-name">Tutorial</span>
+                            <span class="mode-option-blurb">Find the cheese on an open board</span>
+                        </button>
+                        <button class="mode-option" data-mode="puzzle">
+                            <span class="mode-option-name">Puzzle</span>
+                            <span class="mode-option-blurb">Walls, tunnels, bridges and belts</span>
+                        </button>
+                        <button class="mode-option" data-mode="time_trial">
+                            <span class="mode-option-name">Time Trial</span>
+                            <span class="mode-option-blurb">Find 10 cheeses in the fewest presses</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-menu">
+                    <button class="settings-chip" id="settings-chip" title="Settings" aria-haspopup="true" aria-expanded="false">
+                        <svg class="icon"><use href="#icon-settings"/></svg>
                     </button>
-                    <button class="mode-option" data-mode="time_trial">
-                        <span class="mode-option-name">Time Trial</span>
-                        <span class="mode-option-blurb">Find 10 cheeses in the fewest presses</span>
-                    </button>
+                    <div class="settings-panel" id="settings-panel" hidden>
+                        <div class="setting-row">
+                            <span class="setting-name">Sound</span>
+                            <div class="segmented">
+                                <button class="segment" id="sound-on">On</button>
+                                <button class="segment" id="sound-off">Off</button>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-name">Speed</span>
+                            <div class="segmented">
+                                <button class="segment speed-option" data-speed="1">1×</button>
+                                <button class="segment speed-option" data-speed="2">2×</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>

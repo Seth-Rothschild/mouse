@@ -27,8 +27,14 @@ var mode = "editing";
 var playback_state = null;
 var go_pressed_at = 0;
 var double_tap_window = 400;
-var ticks_per_step = 26;
-var ticks_per_pause = 16;
+var base_ticks_per_step = 26;
+var base_ticks_per_pause = 16;
+var ticks_per_step = base_ticks_per_step;
+var ticks_per_pause = base_ticks_per_pause;
+
+var settings_storage_key = "pseudo-mouse-settings";
+var speed_choices = [1, 2];
+var settings = load_settings();
 
 var squeak_effect = null;
 var screen_shake = null;
@@ -38,6 +44,7 @@ var confetti_particles = [];
 var confetti_colors = ["#ff4136", "#2ecc40", "#ffdc00", "#0074d9", "#b10dc9", "#ff851b"];
 
 var audio_context = null;
+var master_gain = null;
 var motor = null;
 var motor_running = false;
 
@@ -181,6 +188,65 @@ function set_mode_list_open(open) {
 
 function is_mode_list_open() {
   return !document.getElementById("mode-list").hidden;
+}
+
+function load_settings() {
+  var settings = { sound_on: true, speed: 1 };
+  try {
+    var saved = JSON.parse(localStorage.getItem(settings_storage_key));
+    if (saved) {
+      Object.assign(settings, saved);
+    }
+  } catch (error) {
+    return settings;
+  }
+  var speed_is_allowed = speed_choices.indexOf(settings.speed) !== -1;
+  if (!speed_is_allowed) {
+    settings.speed = 1;
+  }
+  return settings;
+}
+
+function save_settings() {
+  try {
+    localStorage.setItem(settings_storage_key, JSON.stringify(settings));
+  } catch (error) {
+    return;
+  }
+}
+
+function update_settings_panel() {
+  document.getElementById("sound-on").classList.toggle("active", settings.sound_on);
+  document.getElementById("sound-off").classList.toggle("active", !settings.sound_on);
+  var speed_options = document.querySelectorAll(".speed-option");
+  for (var i = 0; i < speed_options.length; i++) {
+    var option_speed = Number(speed_options[i].dataset.speed);
+    speed_options[i].classList.toggle("active", option_speed === settings.speed);
+  }
+}
+
+function apply_settings() {
+  ticks_per_step = Math.round(base_ticks_per_step / settings.speed);
+  ticks_per_pause = Math.round(base_ticks_per_pause / settings.speed);
+  if (master_gain) {
+    master_gain.gain.value = sound_volume();
+  }
+  update_settings_panel();
+}
+
+function change_settings(changes) {
+  Object.assign(settings, changes);
+  save_settings();
+  apply_settings();
+}
+
+function set_settings_panel_open(open) {
+  document.getElementById("settings-panel").hidden = !open;
+  document.getElementById("settings-chip").setAttribute("aria-expanded", String(open));
+}
+
+function is_settings_panel_open() {
+  return !document.getElementById("settings-panel").hidden;
 }
 
 function select_game_mode(new_mode) {
@@ -485,9 +551,19 @@ function flash_button(button) {
   }, 150);
 }
 
+function sound_volume() {
+  if (settings.sound_on) {
+    return 1;
+  }
+  return 0;
+}
+
 function ensure_audio_context() {
   if (!audio_context) {
     audio_context = new (window.AudioContext || window.webkitAudioContext)();
+    master_gain = audio_context.createGain();
+    master_gain.gain.value = sound_volume();
+    master_gain.connect(audio_context.destination);
   }
   if (audio_context.state === "suspended") {
     audio_context.resume();
@@ -495,20 +571,51 @@ function ensure_audio_context() {
   return audio_context;
 }
 
-function play_click_sound() {
-  var ctx_audio = ensure_audio_context();
+function create_noise_buffer(ctx_audio, duration) {
+  var sample_count = Math.floor(ctx_audio.sampleRate * duration);
+  var buffer = ctx_audio.createBuffer(1, sample_count, ctx_audio.sampleRate);
+  var samples = buffer.getChannelData(0);
+  for (var i = 0; i < sample_count; i++) {
+    samples[i] = Math.random() * 2 - 1;
+  }
+  return buffer;
+}
+
+function play_click_tick(ctx_audio, now) {
+  var noise = ctx_audio.createBufferSource();
+  var filter = ctx_audio.createBiquadFilter();
+  var gain = ctx_audio.createGain();
+  noise.buffer = create_noise_buffer(ctx_audio, 0.02);
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(2000, now);
+  gain.gain.setValueAtTime(0.35, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(master_gain);
+  noise.start(now);
+  noise.stop(now + 0.02);
+}
+
+function play_click_body(ctx_audio, now) {
   var oscillator = ctx_audio.createOscillator();
   var gain = ctx_audio.createGain();
-  var now = ctx_audio.currentTime;
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(900, now);
-  oscillator.frequency.exponentialRampToValueAtTime(400, now + 0.04);
-  gain.gain.setValueAtTime(0.08, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+  oscillator.type = "triangle";
+  oscillator.frequency.setValueAtTime(1200, now);
+  oscillator.frequency.exponentialRampToValueAtTime(300, now + 0.03);
+  gain.gain.setValueAtTime(0.25, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
   oscillator.connect(gain);
-  gain.connect(ctx_audio.destination);
-  oscillator.start();
-  oscillator.stop(now + 0.05);
+  gain.connect(master_gain);
+  oscillator.start(now);
+  oscillator.stop(now + 0.04);
+}
+
+function play_click_sound() {
+  var ctx_audio = ensure_audio_context();
+  var now = ctx_audio.currentTime;
+  play_click_tick(ctx_audio, now);
+  play_click_body(ctx_audio, now);
 }
 
 function buzz_on_press() {
@@ -546,7 +653,7 @@ function play_squeak_sound() {
   gain.gain.setValueAtTime(0.2, ctx_audio.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx_audio.currentTime + 0.15);
   oscillator.connect(gain);
-  gain.connect(ctx_audio.destination);
+  gain.connect(master_gain);
   oscillator.start();
   oscillator.stop(ctx_audio.currentTime + 0.15);
 }
@@ -561,7 +668,7 @@ function play_thud_sound() {
   gain.gain.setValueAtTime(0.28, ctx_audio.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx_audio.currentTime + 0.16);
   oscillator.connect(gain);
-  gain.connect(ctx_audio.destination);
+  gain.connect(master_gain);
   oscillator.start();
   oscillator.stop(ctx_audio.currentTime + 0.16);
 }
@@ -593,7 +700,7 @@ function play_fanfare_sound() {
 
     oscillator.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx_audio.destination);
+    gain.connect(master_gain);
     oscillator.start(note_start);
     oscillator.stop(note_end + 0.02);
   });
@@ -621,7 +728,7 @@ function ensure_motor() {
   vibrato.connect(vibrato_depth);
   vibrato_depth.connect(oscillator.frequency);
   oscillator.connect(gain);
-  gain.connect(ctx_audio.destination);
+  gain.connect(master_gain);
 
   oscillator.start();
   vibrato.start();
@@ -646,7 +753,7 @@ function set_motor_running(running) {
   motor_running = running;
   var just_created = !motor;
   ensure_motor();
-  var target_gain = running ? 0.045 : 0;
+  var target_gain = running ? 0.02 : 0;
 
   if (just_created && running) {
     // Fallback in case the motor wasn't warmed up ahead of time (see
@@ -1518,19 +1625,44 @@ for (var mode_index = 0; mode_index < mode_options.length; mode_index++) {
   });
 }
 
+document.getElementById("settings-chip").addEventListener("click", function () {
+  set_settings_panel_open(!is_settings_panel_open());
+});
+
+document.getElementById("sound-on").addEventListener("click", function () {
+  change_settings({ sound_on: true });
+});
+
+document.getElementById("sound-off").addEventListener("click", function () {
+  change_settings({ sound_on: false });
+});
+
+var speed_options = document.querySelectorAll(".speed-option");
+for (var speed_index = 0; speed_index < speed_options.length; speed_index++) {
+  speed_options[speed_index].addEventListener("click", function (event) {
+    change_settings({ speed: Number(event.currentTarget.dataset.speed) });
+  });
+}
+
 document.addEventListener("click", function (event) {
-  var clicked_inside_menu = event.target.closest(".mode-menu");
-  if (!clicked_inside_menu) {
+  var clicked_inside_mode_menu = event.target.closest(".mode-menu");
+  if (!clicked_inside_mode_menu) {
     set_mode_list_open(false);
+  }
+  var clicked_inside_settings_menu = event.target.closest(".settings-menu");
+  if (!clicked_inside_settings_menu) {
+    set_settings_panel_open(false);
   }
 });
 
 document.addEventListener("keydown", function (event) {
   if (event.key === "Escape") {
     set_mode_list_open(false);
+    set_settings_panel_open(false);
   }
 });
 
+apply_settings();
 rebuild_routine_row();
 select_game_mode("tutorial");
 loop();
