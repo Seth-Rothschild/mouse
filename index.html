@@ -278,6 +278,59 @@
             font-size: 14px;
             color: #777;
         }
+        button {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        @media (max-width: 800px) {
+            html, body {
+                height: auto;
+                min-height: 100%;
+            }
+            body {
+                flex-direction: column;
+            }
+            .main-area {
+                flex: none;
+                padding: 12px;
+                overflow-y: visible;
+            }
+            h1 {
+                margin: 0 0 8px;
+                font-size: 26px;
+            }
+            canvas {
+                box-sizing: border-box;
+                width: 100%;
+                height: auto;
+                max-width: 600px;
+            }
+            .sidebar {
+                height: auto;
+                min-height: 200px;
+                padding: 12px;
+                border-left: none;
+                border-top: 2px solid #ccc;
+            }
+            #sequence-display {
+                width: 100%;
+                max-width: 600px;
+                flex: none;
+                min-height: 112px;
+                max-height: 240px;
+            }
+            .controls {
+                grid-template-columns: repeat(3, 64px);
+                grid-template-rows: repeat(3, 64px);
+            }
+            .action-button {
+                width: 110px;
+            }
+            #routine-row {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
