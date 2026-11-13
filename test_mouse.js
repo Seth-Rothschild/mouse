@@ -17,6 +17,7 @@ const {
   selection_range,
   selection_after_tap,
   expand_program,
+  count_expanded_steps,
   reached_cheese,
   start_playback,
   playback_tick,
@@ -258,6 +259,30 @@ describe("expand_program", () => {
     const program = add_step(create_program(), outer);
     const types = expand_program(program).steps.map((step) => step.type);
     assert.deepStrictEqual(types, ["forward", "forward", "squeak"]);
+  });
+});
+
+describe("count_expanded_steps", () => {
+  it("matches the length of the expanded program", () => {
+    const inner = { type: "routine", steps: [{ type: "forward" }, { type: "forward" }] };
+    const outer = { type: "routine", steps: [inner, { type: "squeak" }, inner] };
+    let program = program_of(["squeak", "turn_left"]);
+    program = add_step(program, outer);
+    program = add_step(program, inner);
+    assert.strictEqual(count_expanded_steps(program), expand_program(program).steps.length);
+  });
+
+  it("is zero for an empty program", () => {
+    assert.strictEqual(count_expanded_steps(create_program()), 0);
+  });
+
+  it("counts deeply nested routines without unpacking them", () => {
+    let routine = { type: "routine", steps: [{ type: "squeak" }] };
+    for (let depth = 0; depth < 8; depth++) {
+      routine = { type: "routine", steps: Array(10).fill(routine) };
+    }
+    const program = add_step(create_program(), routine);
+    assert.strictEqual(count_expanded_steps(program), 100000000);
   });
 });
 

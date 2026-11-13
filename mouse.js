@@ -189,6 +189,29 @@ function expand_program(program) {
   return { steps: expanded };
 }
 
+function count_expanded_steps(program) {
+  var counts_by_routine = new Map();
+
+  function count_step(step) {
+    if (step.type !== "routine") {
+      return 1;
+    }
+    if (!counts_by_routine.has(step)) {
+      var inner_counts = step.steps.map(count_step);
+      var total = inner_counts.reduce(function (sum, count) {
+        return sum + count;
+      }, 0);
+      counts_by_routine.set(step, total);
+    }
+    return counts_by_routine.get(step);
+  }
+
+  var slot_counts = program.steps.map(count_step);
+  return slot_counts.reduce(function (sum, count) {
+    return sum + count;
+  }, 0);
+}
+
 function plan_run(program, start_mouse, board) {
   var steps = expand_program(program).steps;
   var beats = [];
@@ -318,6 +341,7 @@ if (typeof module !== "undefined") {
     selection_range,
     selection_after_tap,
     expand_program,
+    count_expanded_steps,
     reached_cheese,
     start_playback,
     playback_tick,

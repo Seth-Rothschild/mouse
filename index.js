@@ -34,12 +34,23 @@ var audio_context = null;
 var motor = null;
 var motor_running = false;
 
+var message_timer = null;
+var frame_ms = 1000 / 60;
+var last_frame_at = null;
+var frame_samples = [];
+var frames_to_sample = 90;
+var common_refresh_rates = [30, 60, 75, 90, 120, 144, 165, 240];
+var counted_program = null;
+var counted_steps = 0;
+
+var mode_names = { tutorial: "Tutorial", puzzle: "Puzzle", maze: "Maze" };
+
 var actions = {
-  forward: { type: "forward", color: "#3498db", symbol: "↑" },
-  backward: { type: "backward", color: "#ffdc00", symbol: "↓" },
-  turn_right: { type: "turn_right", color: "#9b59b6", symbol: "↷" },
-  turn_left: { type: "turn_left", color: "#E67E22", symbol: "↶" },
-  squeak: { type: "squeak", color: "#ff4136", symbol: "♪" },
+  forward: { type: "forward", color: "#3498db", ink: "#fff" },
+  backward: { type: "backward", color: "#ffdc00", ink: "#2d2a32" },
+  turn_right: { type: "turn_right", color: "#9b59b6", ink: "#fff" },
+  turn_left: { type: "turn_left", color: "#E67E22", ink: "#fff" },
+  squeak: { type: "squeak", color: "#ff4136", ink: "#fff" },
 };
 
 var routine_looks = [
@@ -72,13 +83,14 @@ function layout_board() {
 }
 
 function status_text() {
+  var stars = "\u2605 " + levels_completed;
   if (game_mode === "puzzle") {
-    return "Puzzle \u00b7 Solved: " + levels_completed;
+    return stars + " solved";
   }
   if (game_mode === "maze") {
-    return "Maze " + board.rows + " \u00d7 " + board.cols + " \u00b7 Levels found: " + levels_completed;
+    return "Maze " + board.rows + " \u00d7 " + board.cols + " \u00b7 " + stars + " found";
   }
-  return "Levels found: " + levels_completed;
+  return stars + " found";
 }
 
 function update_status() {
@@ -110,11 +122,21 @@ function setup_puzzle() {
   cheese = puzzle.cheese;
 }
 
-function update_mode_buttons() {
-  var buttons = document.querySelectorAll(".mode-button");
-  for (var i = 0; i < buttons.length; i++) {
-    buttons[i].classList.toggle("active", buttons[i].dataset.mode === game_mode);
+function update_mode_menu() {
+  document.getElementById("mode-chip-label").textContent = mode_names[game_mode];
+  var options = document.querySelectorAll(".mode-option");
+  for (var i = 0; i < options.length; i++) {
+    options[i].classList.toggle("active", options[i].dataset.mode === game_mode);
   }
+}
+
+function set_mode_list_open(open) {
+  document.getElementById("mode-list").hidden = !open;
+  document.getElementById("mode-chip").setAttribute("aria-expanded", String(open));
+}
+
+function is_mode_list_open() {
+  return !document.getElementById("mode-list").hidden;
 }
 
 function select_game_mode(new_mode) {
@@ -134,7 +156,7 @@ function select_game_mode(new_mode) {
   layout_board();
   set_message("");
   update_status();
-  update_mode_buttons();
+  update_mode_menu();
   rebuild_slots();
   refresh_buttons();
 }
@@ -164,32 +186,50 @@ function advance_to_next_level() {
   }
 }
 
-function set_message(text) {
+function set_message(text, tone) {
   var element = document.getElementById("message");
-  element.textContent = text;
-  element.classList.remove("pop");
-  void element.offsetWidth;
-  if (text) {
-    element.classList.add("pop");
+  clearTimeout(message_timer);
+  element.classList.remove("shown", "win", "try");
+  if (!text) {
+    return;
   }
+  element.textContent = text;
+  void element.offsetWidth;
+  element.classList.add("shown", tone);
+  message_timer = setTimeout(function () {
+    element.classList.remove("shown");
+  }, 2600);
 }
 
 function step_appearance(step) {
   if (step.type === "routine") {
-    return { color: step.color, symbol: step.icon };
+    return { color: step.color };
   }
   return actions[step.type];
+}
+
+function build_icon(name) {
+  var svg_namespace = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(svg_namespace, "svg");
+  svg.setAttribute("class", "icon");
+  var use = document.createElementNS(svg_namespace, "use");
+  use.setAttribute("href", "#icon-" + name);
+  svg.appendChild(use);
+  return svg;
 }
 
 function build_slot(step, slot_index) {
   var appearance = step_appearance(step);
   var slot = document.createElement("div");
   slot.className = "slot filled";
+  slot.style.background = appearance.color;
   if (step.type === "routine") {
     slot.classList.add("routine");
+    slot.textContent = step.icon;
+  } else {
+    slot.style.color = appearance.ink;
+    slot.appendChild(build_icon(step.type));
   }
-  slot.style.background = appearance.color;
-  slot.textContent = appearance.symbol;
   slot.addEventListener("click", function () {
     tap_slot(slot_index);
   });
@@ -698,6 +738,10 @@ function refresh_buttons() {
   var step_button_ids = ["btn-forward", "btn-backward", "btn-left", "btn-right", "btn-squeak"];
   for (var i = 0; i < step_button_ids.length; i++) {
     document.getElementById(step_button_ids[i]).disabled = executing;
+  }
+  document.getElementById("mode-chip").disabled = executing;
+  if (executing) {
+    set_mode_list_open(false);
   }
   var tray_actions = document.getElementById("tray-actions");
   tray_actions.classList.toggle("hidden", executing || nothing_selected);
@@ -1216,7 +1260,123 @@ function render() {
   ctx.restore();
 }
 
+function set_text(element_id, text) {
+  var element = document.getElementById(element_id);
+  if (element.textContent !== text) {
+    element.textContent = text;
+  }
+}
+
+function two_digits(number) {
+  if (number < 10) {
+    return "0" + number;
+  }
+  return String(number);
+}
+
+function duration_text(ticks) {
+  var total_seconds = Math.ceil((ticks * frame_ms) / 1000);
+  var seconds = total_seconds % 60;
+  var total_minutes = Math.floor(total_seconds / 60);
+  var minutes = total_minutes % 60;
+  var total_hours = Math.floor(total_minutes / 60);
+  var days = Math.floor(total_hours / 24);
+
+  if (total_minutes < 60) {
+    return total_minutes + ":" + two_digits(seconds);
+  }
+  if (total_hours < 24) {
+    return total_hours + ":" + two_digits(minutes) + ":" + two_digits(seconds);
+  }
+  if (days === 1) {
+    return "1 day";
+  }
+  return days.toLocaleString() + " days";
+}
+
+function program_step_count() {
+  if (program !== counted_program) {
+    counted_steps = count_expanded_steps(program);
+    counted_program = program;
+  }
+  return counted_steps;
+}
+
+function ticks_per_beat() {
+  return ticks_per_step + ticks_per_pause;
+}
+
+function ticks_into_current_beat() {
+  if (playback_state.phase === "paused") {
+    return ticks_per_step + playback_state.ticks_in_phase;
+  }
+  return playback_state.ticks_in_phase;
+}
+
+function update_running_hud() {
+  var total_beats = run_plan.steps.length;
+  var current_beat = playback_state.step_index + 1;
+  var total_ticks = total_beats * ticks_per_beat();
+  var elapsed_ticks = playback_state.step_index * ticks_per_beat() + ticks_into_current_beat();
+  var remaining_ticks = Math.max(total_ticks - elapsed_ticks, 0);
+  var progress_percent = Math.min((elapsed_ticks / total_ticks) * 100, 100);
+
+  set_text("stat-steps", current_beat.toLocaleString() + " / " + total_beats.toLocaleString());
+  set_text("stat-time", duration_text(remaining_ticks));
+  document.getElementById("progress-fill").style.width = progress_percent + "%";
+}
+
+function update_editing_hud() {
+  var step_count = program_step_count();
+  set_text("stat-steps", step_count.toLocaleString());
+  set_text("stat-time", duration_text(step_count * ticks_per_beat()));
+  document.getElementById("progress-fill").style.width = "0%";
+}
+
+function update_hud() {
+  if (mode === "executing" && playback_state) {
+    update_running_hud();
+  } else {
+    update_editing_hud();
+  }
+}
+
+function median(numbers) {
+  var sorted = numbers.slice().sort(function (a, b) {
+    return a - b;
+  });
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function nearest_refresh_rate(measured_rate) {
+  var nearest = common_refresh_rates[0];
+  common_refresh_rates.forEach(function (rate) {
+    var distance = Math.abs(rate - measured_rate);
+    var nearest_distance = Math.abs(nearest - measured_rate);
+    if (distance < nearest_distance) {
+      nearest = rate;
+    }
+  });
+  return nearest;
+}
+
+function track_frame_time() {
+  if (frame_samples.length >= frames_to_sample) {
+    return;
+  }
+  var now = performance.now();
+  if (last_frame_at !== null) {
+    frame_samples.push(now - last_frame_at);
+  }
+  last_frame_at = now;
+  if (frame_samples.length === frames_to_sample) {
+    var measured_rate = 1000 / median(frame_samples);
+    frame_ms = 1000 / nearest_refresh_rate(measured_rate);
+  }
+}
+
 function loop() {
+  track_frame_time();
   if (mode === "executing" && playback_state) {
     var previous_step_index = playback_state.step_index;
     playback_state = playback_tick(playback_state, run_plan, board, ticks_per_step, ticks_per_pause);
@@ -1234,12 +1394,12 @@ function loop() {
       refresh_buttons();
       document.getElementById("btn-go").textContent = "GO";
       if (reached_cheese(mouse, cheese)) {
-        set_message("Squeak! Found the cheese!");
+        set_message("Squeak! Found the cheese!", "win");
         spawn_confetti();
         play_fanfare_sound();
         celebration = { started_at: performance.now(), duration: 1100 };
       } else {
-        set_message("No cheese yet — try again!");
+        set_message("No cheese yet — try again!", "try");
       }
       playback_state = null;
       run_plan = null;
@@ -1248,18 +1408,37 @@ function loop() {
   }
 
   render();
+  update_hud();
   requestAnimationFrame(loop);
 }
 
-var mode_buttons = document.querySelectorAll(".mode-button");
-for (var mode_index = 0; mode_index < mode_buttons.length; mode_index++) {
-  mode_buttons[mode_index].addEventListener("click", function (event) {
+document.getElementById("mode-chip").addEventListener("click", function () {
+  set_mode_list_open(!is_mode_list_open());
+});
+
+var mode_options = document.querySelectorAll(".mode-option");
+for (var mode_index = 0; mode_index < mode_options.length; mode_index++) {
+  mode_options[mode_index].addEventListener("click", function (event) {
+    set_mode_list_open(false);
     if (mode === "executing") {
       return;
     }
     select_game_mode(event.currentTarget.dataset.mode);
   });
 }
+
+document.addEventListener("click", function (event) {
+  var clicked_inside_menu = event.target.closest(".mode-menu");
+  if (!clicked_inside_menu) {
+    set_mode_list_open(false);
+  }
+});
+
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") {
+    set_mode_list_open(false);
+  }
+});
 
 rebuild_routine_row();
 select_game_mode("tutorial");
