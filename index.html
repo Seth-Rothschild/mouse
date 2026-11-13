@@ -185,6 +185,22 @@
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
         }
+        .hud:not(.trial) .trial-only {
+            display: none;
+        }
+        .hud.trial {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+        .hud.trial #level-counter {
+            justify-self: start;
+        }
+        #trial-presses {
+            justify-self: center;
+        }
+        #trial-clock {
+            justify-self: end;
+        }
         .program-stats {
             flex-shrink: 0;
             box-sizing: border-box;
@@ -356,6 +372,101 @@
         }
         #btn-delete { background: var(--squeak); }
         #btn-save { background: var(--forward); }
+        #btn-start, #btn-play-again {
+            width: 180px;
+            background: var(--go);
+        }
+
+        .trial-start {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(45, 42, 50, 0.35);
+        }
+        .results-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(45, 42, 50, 0.55);
+        }
+        .trial-start[hidden], .results-screen[hidden] {
+            display: none;
+        }
+        .trial-card {
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 340px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 20px 24px 26px;
+            border: 4px solid var(--ink);
+            border-radius: var(--radius);
+            background: #fff;
+            text-align: center;
+            animation: message-pop-card 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes message-pop-card {
+            0% { transform: scale(0.6); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .trial-heading {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .trial-blurb {
+            margin: 0 0 6px;
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--ink-soft);
+        }
+        .results-card .trial-heading {
+            color: var(--win);
+        }
+        .results-stats {
+            width: 100%;
+            margin: 0 0 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .result {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius-small);
+            background: var(--page);
+        }
+        .result dt {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+        }
+        .result dd {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .result-main {
+            background: rgba(46, 204, 64, 0.2);
+        }
+        .result-main dd {
+            font-size: 26px;
+        }
 
         #sequence-display {
             display: flex;
@@ -603,16 +714,29 @@
                         <span class="mode-option-name">Puzzle</span>
                         <span class="mode-option-blurb">Walls, tunnels, bridges and belts</span>
                     </button>
+                    <button class="mode-option" data-mode="time_trial">
+                        <span class="mode-option-name">Time Trial</span>
+                        <span class="mode-option-blurb">Find 10 cheeses in the fewest presses</span>
+                    </button>
                 </div>
             </div>
         </header>
         <div class="board-frame">
             <div class="hud">
                 <span id="level-counter"></span>
+                <span class="trial-only" id="trial-presses"></span>
+                <span class="trial-only" id="trial-clock"></span>
             </div>
             <div class="board-stage">
                 <canvas id="game" width="600" height="440"></canvas>
                 <div id="message"></div>
+                <div class="trial-start" id="trial-start" hidden>
+                    <div class="trial-card">
+                        <h2 class="trial-heading">Time Trial</h2>
+                        <p class="trial-blurb">Find 10 cheeses using as few button presses as you can.</p>
+                        <button class="action-button" id="btn-start">START</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="controls">
@@ -640,9 +764,24 @@
             <button class="action-button" id="btn-save" title="Save the picked steps as a new button">SAVE</button>
         </div>
     </div>
+    <div class="results-screen" id="trial-results" hidden>
+        <div class="trial-card results-card">
+            <h2 class="trial-heading">You win!</h2>
+            <p class="trial-blurb">All 10 cheeses found.</p>
+            <dl class="results-stats">
+                <div class="result result-main"><dt>Button presses</dt><dd id="result-presses">0</dd></div>
+                <div class="result"><dt>Total time</dt><dd id="result-time">0:00.0</dd></div>
+                <div class="result"><dt>Program run time</dt><dd id="result-run-time">0:00.0</dd></div>
+                <div class="result"><dt>GO presses</dt><dd id="result-go">0</dd></div>
+                <div class="result"><dt>Squeaks</dt><dd id="result-squeaks">0</dd></div>
+            </dl>
+            <button class="action-button" id="btn-play-again">PLAY AGAIN</button>
+        </div>
+    </div>
     <script src="board.js"></script>
     <script src="mouse.js"></script>
     <script src="maze.js"></script>
+    <script src="trial.js"></script>
     <script src="index.js"></script>
 </body>
 </html>

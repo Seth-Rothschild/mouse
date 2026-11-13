@@ -43,7 +43,9 @@ var common_refresh_rates = [30, 60, 75, 90, 120, 144, 165, 240];
 var counted_program = null;
 var counted_steps = 0;
 
-var mode_names = { tutorial: "Tutorial", puzzle: "Puzzle", maze: "Maze" };
+var trial = create_trial();
+
+var mode_names = { tutorial: "Tutorial", puzzle: "Puzzle", maze: "Maze", time_trial: "Time Trial" };
 
 var actions = {
   forward: { type: "forward", color: "#3498db", ink: "#fff" },
@@ -83,18 +85,53 @@ function layout_board() {
 }
 
 function status_text() {
-  var stars = "\u2605 " + levels_completed;
+  var stars = String(levels_completed);
   if (game_mode === "puzzle") {
     return stars + " solved";
   }
   if (game_mode === "maze") {
     return "Maze " + board.rows + " \u00d7 " + board.cols + " \u00b7 " + stars + " found";
   }
+  if (game_mode === "time_trial") {
+    return trial.solved + " / " + TRIAL_GOAL + " solved";
+  }
   return stars + " found";
 }
 
 function update_status() {
-  document.getElementById("level-counter").textContent = status_text();
+  set_text("level-counter", status_text());
+  if (game_mode === "time_trial") {
+    var elapsed = trial_elapsed_ms(trial, performance.now());
+    set_text("trial-presses", trial.button_presses + " presses");
+    set_text("trial-clock", clock_text(elapsed));
+  }
+}
+
+function is_trial_locked() {
+  return game_mode === "time_trial" && !is_trial_running(trial);
+}
+
+function update_trial_overlays() {
+  var waiting_to_start = game_mode === "time_trial" && trial.phase === "waiting";
+  document.getElementById("trial-start").hidden = !waiting_to_start;
+  document.getElementById("trial-results").hidden = true;
+}
+
+function show_trial_results() {
+  var elapsed = trial_elapsed_ms(trial, performance.now());
+  set_text("result-presses", trial.button_presses.toLocaleString());
+  set_text("result-time", clock_text(elapsed));
+  set_text("result-run-time", clock_text(trial.run_ms));
+  set_text("result-go", trial.go_presses.toLocaleString());
+  set_text("result-squeaks", trial.squeaks.toLocaleString());
+  document.getElementById("trial-results").hidden = false;
+}
+
+function begin_trial() {
+  start_trial(trial, performance.now());
+  update_trial_overlays();
+  update_status();
+  refresh_buttons();
 }
 
 function set_levels_completed(count) {
@@ -141,7 +178,12 @@ function is_mode_list_open() {
 
 function select_game_mode(new_mode) {
   game_mode = new_mode;
-  if (game_mode === "puzzle") {
+  trial = create_trial();
+  if (game_mode === "time_trial") {
+    routines = [];
+    rebuild_routine_row();
+  }
+  if (game_mode === "puzzle" || game_mode === "time_trial") {
     setup_puzzle();
   } else if (game_mode === "maze") {
     setup_maze();
@@ -155,8 +197,10 @@ function select_game_mode(new_mode) {
   levels_completed = 0;
   layout_board();
   set_message("");
+  document.querySelector(".hud").classList.toggle("trial", game_mode === "time_trial");
   update_status();
   update_mode_menu();
+  update_trial_overlays();
   rebuild_slots();
   refresh_buttons();
 }
@@ -176,8 +220,12 @@ function grow_current_maze() {
 }
 
 function advance_to_next_level() {
+  if (trial.phase === "won") {
+    show_trial_results();
+    return;
+  }
   set_levels_completed(levels_completed + 1);
-  if (game_mode === "puzzle") {
+  if (game_mode === "puzzle" || game_mode === "time_trial") {
     advance_puzzle();
   } else if (game_mode === "maze") {
     grow_current_maze();
@@ -627,6 +675,7 @@ function is_blocked_move(step, from, to) {
 
 function activate_step_effects(step, from, to) {
   if (step.type === "squeak") {
+    record_squeak(trial);
     trigger_squeak_effect();
     return;
   }
@@ -645,6 +694,7 @@ function add_step_to_program(step) {
   // by the time the motor actually needs to be audible the audio pipeline
   // has already spun up and won't pop.
   ensure_motor();
+  record_button_press(trial);
   program = add_step(program, step);
   append_slot(step);
   set_selection(null);
@@ -699,6 +749,7 @@ function start_execution() {
     document.getElementById("btn-go").textContent = "GO";
     return;
   }
+  record_go_press(trial);
   run_plan = plan_run(program, start_mouse, board);
   if (run_plan.steps.length === 0) {
     run_plan = null;
@@ -732,13 +783,17 @@ function reset_program() {
 
 function refresh_buttons() {
   var executing = mode === "executing";
+  var trial_locked = is_trial_locked();
+  var steps_locked = executing || trial_locked;
   var nothing_selected = !selection;
   var routine_row_is_full = routines.length >= routine_looks.length;
 
   var step_button_ids = ["btn-forward", "btn-backward", "btn-left", "btn-right", "btn-squeak"];
   for (var i = 0; i < step_button_ids.length; i++) {
-    document.getElementById(step_button_ids[i]).disabled = executing;
+    document.getElementById(step_button_ids[i]).disabled = steps_locked;
   }
+  document.getElementById("btn-go").disabled = trial_locked;
+  document.getElementById("btn-reset").disabled = trial_locked;
   document.getElementById("mode-chip").disabled = executing;
   if (executing) {
     set_mode_list_open(false);
@@ -749,7 +804,7 @@ function refresh_buttons() {
 
   var routine_row_buttons = document.querySelectorAll("#routine-row button");
   for (var j = 0; j < routine_row_buttons.length; j++) {
-    routine_row_buttons[j].disabled = executing;
+    routine_row_buttons[j].disabled = steps_locked;
   }
 }
 
@@ -788,6 +843,14 @@ document.getElementById("btn-go").addEventListener("click", function (event) {
 document.getElementById("btn-reset").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
   reset_program();
+});
+document.getElementById("btn-start").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  begin_trial();
+});
+document.getElementById("btn-play-again").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  select_game_mode("time_trial");
 });
 
 function cell_center_x(col) {
@@ -1379,6 +1442,7 @@ function loop() {
   track_frame_time();
   if (mode === "executing" && playback_state) {
     var previous_step_index = playback_state.step_index;
+    record_run_time(trial, frame_ms);
     playback_state = playback_tick(playback_state, run_plan, board, ticks_per_step, ticks_per_pause);
 
     if (playback_state.step_index !== previous_step_index) {
@@ -1394,6 +1458,8 @@ function loop() {
       refresh_buttons();
       document.getElementById("btn-go").textContent = "GO";
       if (reached_cheese(mouse, cheese)) {
+        record_solve(trial, performance.now());
+        refresh_buttons();
         set_message("Squeak! Found the cheese!", "win");
         spawn_confetti();
         play_fanfare_sound();
@@ -1409,6 +1475,9 @@ function loop() {
 
   render();
   update_hud();
+  if (game_mode === "time_trial") {
+    update_status();
+  }
   requestAnimationFrame(loop);
 }
 
