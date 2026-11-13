@@ -131,6 +131,7 @@
             transition: transform 0.05s, box-shadow 0.05s;
         }
         .control:active, .control.pressed {
+            filter: brightness(1.15);
             transform: translateY(4px);
             box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
         }
@@ -162,6 +163,7 @@
             transition: transform 0.05s, box-shadow 0.05s;
         }
         .action-button:active, .action-button.pressed {
+            filter: brightness(1.15);
             transform: translateY(4px);
             box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
         }
@@ -202,6 +204,7 @@
             transition: transform 0.05s, box-shadow 0.05s;
         }
         .routine-button:active, .routine-button.pressed {
+            filter: brightness(1.15);
             transform: translateY(4px);
             box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
         }
@@ -267,6 +270,12 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
+        }
+        .mode-button:active {
+            transform: scale(0.94);
+        }
+        .slot:active {
+            transform: scale(0.9);
         }
         .mode-button.active {
             background: #2ecc40;

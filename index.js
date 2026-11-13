@@ -399,6 +399,43 @@ function ensure_audio_context() {
   return audio_context;
 }
 
+function play_click_sound() {
+  var ctx_audio = ensure_audio_context();
+  var oscillator = ctx_audio.createOscillator();
+  var gain = ctx_audio.createGain();
+  var now = ctx_audio.currentTime;
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(900, now);
+  oscillator.frequency.exponentialRampToValueAtTime(400, now + 0.04);
+  gain.gain.setValueAtTime(0.08, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+  oscillator.connect(gain);
+  gain.connect(ctx_audio.destination);
+  oscillator.start();
+  oscillator.stop(now + 0.05);
+}
+
+function buzz_on_press() {
+  if (navigator.vibrate) {
+    navigator.vibrate(8);
+  }
+}
+
+function is_pressable(element) {
+  var pressable = element.closest("button, .slot");
+  if (!pressable) {
+    return false;
+  }
+  return !pressable.disabled;
+}
+
+document.addEventListener("pointerdown", function (event) {
+  if (is_pressable(event.target)) {
+    play_click_sound();
+    buzz_on_press();
+  }
+});
+
 function play_squeak_sound() {
   var ctx_audio = ensure_audio_context();
   var oscillator = ctx_audio.createOscillator();
