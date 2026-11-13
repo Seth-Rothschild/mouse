@@ -1,5 +1,10 @@
 var canvas = document.getElementById("game");
 var ctx = canvas.getContext("2d");
+var canvas_width = canvas.width;
+var canvas_height = canvas.height;
+var pixel_ratio = Math.min(window.devicePixelRatio || 1, 3);
+canvas.width = canvas_width * pixel_ratio;
+canvas.height = canvas_height * pixel_ratio;
 
 var game_mode = "tutorial";
 var board = create_board(4, 5);
@@ -20,6 +25,8 @@ var selection = null;
 var routines = [];
 var mode = "editing";
 var playback_state = null;
+var go_pressed_at = 0;
+var double_tap_window = 400;
 var ticks_per_step = 26;
 var ticks_per_pause = 16;
 
@@ -77,11 +84,11 @@ function random_cell_excluding(excluded_cells) {
 }
 
 function layout_board() {
-  var fit_width = Math.floor((canvas.width - 40) / board.cols);
-  var fit_height = Math.floor((canvas.height - 40) / board.rows);
+  var fit_width = Math.floor((canvas_width - 40) / board.cols);
+  var fit_height = Math.floor((canvas_height - 40) / board.rows);
   cell_size = Math.min(fit_width, fit_height, max_cell_size);
-  board_origin_x = (canvas.width - board.cols * cell_size) / 2;
-  board_origin_y = (canvas.height - board.rows * cell_size) / 2;
+  board_origin_x = (canvas_width - board.cols * cell_size) / 2;
+  board_origin_y = (canvas_height - board.rows * cell_size) / 2;
 }
 
 function status_text() {
@@ -471,8 +478,9 @@ function rebuild_routine_row() {
 }
 
 function flash_button(button) {
+  clearTimeout(button.flash_timer);
   button.classList.add("pressed");
-  setTimeout(function () {
+  button.flash_timer = setTimeout(function () {
     button.classList.remove("pressed");
   }, 150);
 }
@@ -516,6 +524,10 @@ function is_pressable(element) {
   }
   return !pressable.disabled;
 }
+
+document.addEventListener("dblclick", function (event) {
+  event.preventDefault();
+});
 
 document.addEventListener("pointerdown", function (event) {
   if (is_pressable(event.target)) {
@@ -737,8 +749,16 @@ function current_motion_intensity() {
   return Math.sin(progress * Math.PI);
 }
 
+function is_accidental_double_tap() {
+  var time_since_go = performance.now() - go_pressed_at;
+  return time_since_go < double_tap_window;
+}
+
 function start_execution() {
   if (mode === "executing") {
+    if (is_accidental_double_tap()) {
+      return;
+    }
     mouse = copy_mouse(playback_state.to);
     mode = "editing";
     playback_state = null;
@@ -750,6 +770,7 @@ function start_execution() {
     return;
   }
   record_go_press(trial);
+  go_pressed_at = performance.now();
   run_plan = plan_run(program, start_mouse, board);
   if (run_plan.steps.length === 0) {
     run_plan = null;
@@ -1265,7 +1286,8 @@ function current_shake_offset() {
 }
 
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(pixel_ratio, 0, 0, pixel_ratio, 0, 0);
+  ctx.clearRect(0, 0, canvas_width, canvas_height);
 
   var shake = current_shake_offset();
   ctx.save();
