@@ -614,7 +614,7 @@ function buzz_on_press() {
 }
 
 function is_pressable(element) {
-  var pressable = element.closest("button, .slot");
+  var pressable = element.closest(".control, .routine-button");
   if (!pressable) {
     return false;
   }
