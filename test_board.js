@@ -39,16 +39,48 @@ describe("walls", () => {
 });
 
 describe("tunnels", () => {
-  const board = board_from(["###", "#T#", "#.#"]);
+  const board = board_from(["...", ".H.", "..."]);
 
-  it("can be entered from the ground and stay on level zero", () => {
+  it("can be entered through an open end and stay on level zero", () => {
     const start = create_mouse(2, 1, 0);
     assert.deepStrictEqual(apply_step(start, forward, board), create_mouse(1, 1, 0));
+  });
+
+  it("block a mouse walking into the side", () => {
+    const beside = create_mouse(1, 0, 1);
+    assert.deepStrictEqual(apply_step(beside, forward, board), beside);
   });
 
   it("allow turning inside", () => {
     const inside = create_mouse(1, 1, 0);
     assert.strictEqual(apply_step(inside, turn_right, board).direction, 1);
+  });
+
+  it("do not let a mouse leave through the side after turning", () => {
+    const facing_side = create_mouse(1, 1, 1);
+    assert.deepStrictEqual(apply_step(facing_side, forward, board), facing_side);
+  });
+
+  it("let the mouse come out the far end", () => {
+    const inside = create_mouse(1, 1, 0);
+    assert.deepStrictEqual(apply_step(inside, forward, board), create_mouse(0, 1, 0));
+  });
+
+  it("join into longer runs", () => {
+    const long_run = board_from(["....", "S==.", "...."]);
+    const start = create_mouse(1, 0, 1);
+    const result = run_all(long_run, start, [forward, forward, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(1, 3, 1, 0));
+  });
+});
+
+describe("bridges over tunnels", () => {
+  const board = board_from([".....", "-=-..", "....."]);
+
+  it("let a mouse on the deck walk across the tunnel top", () => {
+    const on_deck = create_mouse(1, 0, 1, 1);
+    const result = run_all(board, on_deck, [forward, forward, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(1, 3, 1, 0));
   });
 });
 
@@ -133,11 +165,12 @@ describe("treadmills", () => {
 
 describe("parse_board", () => {
   it("reads symbols into cells and finds the start and cheese", () => {
-    const parsed = parse_board(["S#C", "T|>"]);
+    const parsed = parse_board(["S#C", "=|>"]);
     assert.deepStrictEqual(parsed.start, { row: 0, col: 0 });
     assert.deepStrictEqual(parsed.cheese, { row: 0, col: 2 });
     assert.strictEqual(cell_at(parsed.board, 0, 1).type, "wall");
     assert.strictEqual(cell_at(parsed.board, 1, 0).type, "tunnel");
+    assert.strictEqual(cell_at(parsed.board, 1, 0).axis, "horizontal");
     assert.strictEqual(cell_at(parsed.board, 1, 1).axis, "vertical");
     assert.strictEqual(cell_at(parsed.board, 1, 2).direction, 1);
   });

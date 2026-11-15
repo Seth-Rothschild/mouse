@@ -7,7 +7,9 @@ var DIRECTIONS = [
 
 var FLOOR = { type: "floor" };
 var WALL = { type: "wall" };
-var TUNNEL = { type: "tunnel" };
+function make_tunnel(axis) {
+  return { type: "tunnel", axis: axis };
+}
 
 function make_bridge(axis) {
   return { type: "bridge", axis: axis };
@@ -75,6 +77,9 @@ function level_after_entering(here, target, move_axis, level) {
     if (target.type === "wall") {
       return null;
     }
+    if (target.type === "tunnel" && move_axis !== target.axis) {
+      return null;
+    }
     if (target.type === "bridge" && move_axis === target.axis) {
       return 1;
     }
@@ -96,11 +101,21 @@ function level_after_entering(here, target, move_axis, level) {
   return null;
 }
 
+function can_leave(here, move_axis, level) {
+  if (here.type === "bridge") {
+    return move_axis === axis_open_on_bridge(here, level);
+  }
+  if (here.type === "tunnel" && level === 0) {
+    return move_axis === here.axis;
+  }
+  return true;
+}
+
 function try_move(mouse, board, move_direction) {
   var unmoved = { row: mouse.row, col: mouse.col, direction: mouse.direction, level: mouse.level };
   var move_axis = axis_of_direction(move_direction);
   var here = cell_at(board, mouse.row, mouse.col);
-  if (here.type === "bridge" && move_axis !== axis_open_on_bridge(here, mouse.level)) {
+  if (!can_leave(here, move_axis, mouse.level)) {
     return unmoved;
   }
 
@@ -140,7 +155,8 @@ var CELLS_BY_SYMBOL = {
   S: FLOOR,
   C: FLOOR,
   "#": WALL,
-  T: TUNNEL,
+  "=": make_tunnel("horizontal"),
+  H: make_tunnel("vertical"),
   "-": make_bridge("horizontal"),
   "|": make_bridge("vertical"),
   "^": make_treadmill(0),
@@ -173,7 +189,7 @@ if (typeof module !== "undefined") {
     DIRECTIONS,
     FLOOR,
     WALL,
-    TUNNEL,
+    make_tunnel,
     make_bridge,
     make_treadmill,
     create_board,

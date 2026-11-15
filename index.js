@@ -78,18 +78,6 @@ var routine_looks = [
   { icon: "🐙", color: "#d0a8f0" },
 ];
 
-function random_cell_excluding(excluded_cells) {
-  var excluded_keys = excluded_cells.map(function (cell) {
-    return cell.row + "," + cell.col;
-  });
-  var row, col;
-  do {
-    row = Math.floor(Math.random() * board.rows);
-    col = Math.floor(Math.random() * board.cols);
-  } while (excluded_keys.indexOf(row + "," + col) !== -1);
-  return { row: row, col: col };
-}
-
 function layout_board() {
   var fit_width = Math.floor((canvas_width - 40) / board.cols);
   var fit_height = Math.floor((canvas_height - 40) / board.rows);
@@ -154,9 +142,10 @@ function set_levels_completed(count) {
 }
 
 function setup_tutorial() {
-  board = create_board(4, 5);
   start_mouse = create_mouse(3, 0, 0);
-  cheese = random_cell_excluding([start_mouse]);
+  var tutorial = generate_tutorial(4, 5, start_mouse, Math.random);
+  board = tutorial.board;
+  cheese = tutorial.cheese;
 }
 
 function setup_maze() {
@@ -303,7 +292,7 @@ function advance_to_next_level() {
   } else if (game_mode === "maze") {
     grow_current_maze();
   } else {
-    cheese = random_cell_excluding([cheese, mouse]);
+    cheese = move_cheese(board, mouse, Math.random);
   }
 }
 
@@ -1077,27 +1066,143 @@ function draw_block(row, col, face_color) {
   ctx.fillRect(x + 3, y + 3, cell_size - 6, cell_size - 9);
 }
 
-function draw_passage(row, col, direction) {
-  ctx.save();
-  ctx.translate(cell_center_x(col), cell_center_y(row));
-  ctx.rotate((direction * Math.PI) / 2);
-  var width = cell_size * 0.44;
-  ctx.fillRect(-width / 2, -cell_size / 2, width, cell_size / 2);
-  ctx.restore();
+var TUNNEL_BODY = "#f97316";
+var TUNNEL_FRONT = "#c2410c";
+var TUNNEL_HOOP = "#fdba74";
+var TUNNEL_RIM = "#9a3412";
+var TUNNEL_HOLE = "#431407";
+var TUNNEL_SHINE = "rgba(255, 255, 255, 0.22)";
+var TUNNEL_HOOP_SPOTS = [1 / 3, 2 / 3];
+
+function is_tunnel_mouth(row, col, direction, axis) {
+  var delta = DIRECTIONS[direction];
+  var neighbor = cell_at(board, row + delta.row_delta, col + delta.col_delta);
+  if (neighbor === null) {
+    return true;
+  }
+  var continues = neighbor.type === "tunnel" && neighbor.axis === axis;
+  return !continues;
 }
 
-function draw_tunnel(row, col) {
-  draw_block(row, col, "#a1887f");
-  ctx.fillStyle = "#3e2723";
-  ctx.beginPath();
-  ctx.arc(cell_center_x(col), cell_center_y(row), cell_size * 0.22, 0, Math.PI * 2);
-  ctx.fill();
-  for (var direction = 0; direction < 4; direction++) {
-    var delta = DIRECTIONS[direction];
-    var neighbor = cell_at(board, row + delta.row_delta, col + delta.col_delta);
-    if (neighbor !== null && neighbor.type !== "wall") {
-      draw_passage(row, col, direction);
+function tunnel_boxes(row, col, axis) {
+  var x = cell_x(col);
+  var y = cell_y(row);
+  var outer = { left: x + 1, top: y + 1, right: x + cell_size - 1, bottom: y + cell_size - 1 };
+  var face = { left: x + 3, top: y + 3, right: x + cell_size - 3, bottom: y + cell_size - 6 };
+  if (axis === "horizontal") {
+    if (!is_tunnel_mouth(row, col, 3, axis)) {
+      outer.left = x;
+      face.left = x;
     }
+    if (!is_tunnel_mouth(row, col, 1, axis)) {
+      outer.right = x + cell_size;
+      face.right = x + cell_size;
+    }
+  } else {
+    if (!is_tunnel_mouth(row, col, 0, axis)) {
+      outer.top = y;
+      face.top = y;
+    }
+    if (!is_tunnel_mouth(row, col, 2, axis)) {
+      outer.bottom = y + cell_size;
+      face.bottom = y + cell_size;
+    }
+  }
+  return { outer: outer, face: face };
+}
+
+function fill_box(box) {
+  ctx.fillRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+}
+
+function clip_to_box(box) {
+  ctx.beginPath();
+  ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+  ctx.clip();
+}
+
+function draw_tunnel_mouth(center_x, center_y, radius_x, radius_y, start_angle) {
+  var rim = cell_size * 0.06;
+  var end_angle = start_angle + Math.PI;
+
+  ctx.fillStyle = TUNNEL_RIM;
+  ctx.beginPath();
+  ctx.ellipse(center_x, center_y, radius_x + rim, radius_y + rim, 0, start_angle, end_angle);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = TUNNEL_HOLE;
+  ctx.beginPath();
+  ctx.ellipse(center_x, center_y, radius_x, radius_y, 0, start_angle, end_angle);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function draw_horizontal_tunnel(row, col, boxes) {
+  var face = boxes.face;
+  var outer = boxes.outer;
+  var face_height = face.bottom - face.top;
+  var hoop_width = cell_size * 0.09;
+
+  ctx.save();
+  clip_to_box(face);
+  ctx.fillStyle = TUNNEL_SHINE;
+  ctx.fillRect(face.left, face.top + face_height * 0.12, face.right - face.left, face_height * 0.2);
+  ctx.fillStyle = TUNNEL_HOOP;
+  TUNNEL_HOOP_SPOTS.forEach(function (spot) {
+    var hoop_x = cell_x(col) + cell_size * spot - hoop_width / 2;
+    ctx.fillRect(hoop_x, face.top, hoop_width, face_height);
+  });
+  ctx.restore();
+
+  var center_y = face.top + face_height / 2;
+  var radius_x = cell_size * 0.14;
+  var radius_y = face_height * 0.36;
+  if (is_tunnel_mouth(row, col, 3, "horizontal")) {
+    draw_tunnel_mouth(outer.left, center_y, radius_x, radius_y, -Math.PI / 2);
+  }
+  if (is_tunnel_mouth(row, col, 1, "horizontal")) {
+    draw_tunnel_mouth(outer.right, center_y, radius_x, radius_y, Math.PI / 2);
+  }
+}
+
+function draw_vertical_tunnel(row, col, boxes) {
+  var face = boxes.face;
+  var outer = boxes.outer;
+  var face_width = face.right - face.left;
+  var hoop_height = cell_size * 0.09;
+
+  ctx.save();
+  clip_to_box(face);
+  ctx.fillStyle = TUNNEL_SHINE;
+  ctx.fillRect(face.left + face_width * 0.2, face.top, face_width * 0.2, face.bottom - face.top);
+  ctx.fillStyle = TUNNEL_HOOP;
+  TUNNEL_HOOP_SPOTS.forEach(function (spot) {
+    var hoop_y = cell_y(row) + cell_size * spot - hoop_height / 2;
+    ctx.fillRect(face.left, hoop_y, face_width, hoop_height);
+  });
+  ctx.restore();
+
+  var center_x = cell_center_x(col);
+  var radius_x = face_width * 0.34;
+  if (is_tunnel_mouth(row, col, 0, "vertical")) {
+    draw_tunnel_mouth(center_x, outer.top, radius_x, cell_size * 0.12, 0);
+  }
+  if (is_tunnel_mouth(row, col, 2, "vertical")) {
+    draw_tunnel_mouth(center_x, outer.bottom, radius_x, cell_size * 0.26, Math.PI);
+  }
+}
+
+function draw_tunnel(row, col, axis) {
+  var boxes = tunnel_boxes(row, col, axis);
+  ctx.fillStyle = TUNNEL_FRONT;
+  fill_box(boxes.outer);
+  ctx.fillStyle = TUNNEL_BODY;
+  fill_box(boxes.face);
+  if (axis === "horizontal") {
+    draw_horizontal_tunnel(row, col, boxes);
+  } else {
+    draw_vertical_tunnel(row, col, boxes);
   }
 }
 
@@ -1136,7 +1241,7 @@ function draw_terrain_tops(covered_cell) {
       if (cell.type === "wall") {
         draw_block(row, col, "#8d6e63");
       } else if (cell.type === "tunnel") {
-        draw_tunnel(row, col);
+        draw_tunnel(row, col, cell.axis);
       } else if (cell.type === "bridge") {
         draw_bridge(row, col, cell.axis);
       }

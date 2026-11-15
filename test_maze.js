@@ -3,6 +3,8 @@ const assert = require("node:assert");
 const {
   reachable_floor_cells,
   generate_maze,
+  generate_tutorial,
+  pick_tunnel,
   move_cheese,
   choose_growth,
   grow_maze,
@@ -10,7 +12,40 @@ const {
   MAX_MAZE_COLS,
 } = require("./maze.js");
 const { create_mouse } = require("./mouse.js");
-const { cell_at } = require("./board.js");
+const { cell_at, parse_board, DIRECTIONS } = require("./board.js");
+
+function cells_of_type(board, type) {
+  const found = [];
+  for (let row = 0; row < board.rows; row++) {
+    for (let col = 0; col < board.cols; col++) {
+      if (cell_at(board, row, col).type === type) {
+        found.push({ row, col });
+      }
+    }
+  }
+  return found;
+}
+
+function tunnel_end_cells(board, cell) {
+  const tunnel = cell_at(board, cell.row, cell.col);
+  let directions = [0, 2];
+  if (tunnel.axis === "horizontal") {
+    directions = [1, 3];
+  }
+  return directions.map((direction) => {
+    const delta = DIRECTIONS[direction];
+    return cell_at(board, cell.row + delta.row_delta, cell.col + delta.col_delta);
+  });
+}
+
+function has_clear_ends(board, cell) {
+  const axis = cell_at(board, cell.row, cell.col).axis;
+  return tunnel_end_cells(board, cell).every((neighbor) => {
+    const continues = neighbor !== null && neighbor.type === "tunnel" && neighbor.axis === axis;
+    const is_floor = neighbor !== null && neighbor.type === "floor";
+    return continues || is_floor;
+  });
+}
 
 function seeded_random(seed) {
   let state = seed;
@@ -34,7 +69,8 @@ describe("generate_maze", () => {
 });
 
 describe("full size boards", () => {
-  it("only use walls and always have a reachable cheese", () => {
+  it("use walls and a few tunnels with clear ends, and always have a reachable cheese", () => {
+    let boards_with_tunnels = 0;
     for (let seed = 1; seed <= 20; seed++) {
       const start = create_mouse(MAX_MAZE_ROWS - 1, 0, 0);
       const puzzle = generate_maze(MAX_MAZE_ROWS, MAX_MAZE_COLS, start, seeded_random(seed));
@@ -42,12 +78,61 @@ describe("full size boards", () => {
       assert.strictEqual(puzzle.board.cols, MAX_MAZE_COLS);
       puzzle.board.cells.forEach((row) => {
         row.forEach((cell) => {
-          assert.ok(cell.type === "floor" || cell.type === "wall");
+          assert.ok(cell.type === "floor" || cell.type === "wall" || cell.type === "tunnel");
         });
       });
+      const tunnels = cells_of_type(puzzle.board, "tunnel");
+      assert.ok(tunnels.length <= 4, "seed " + seed);
+      tunnels.forEach((cell) => {
+        assert.ok(has_clear_ends(puzzle.board, cell), "seed " + seed);
+      });
+      if (tunnels.length > 0) {
+        boards_with_tunnels += 1;
+      }
       const reachable = reachable_floor_cells(puzzle.board, start);
       const found = reachable.some((cell) => cell.row === puzzle.cheese.row && cell.col === puzzle.cheese.col);
       assert.ok(found, "seed " + seed);
+    }
+    assert.ok(boards_with_tunnels >= 15);
+  });
+});
+
+describe("pick_tunnel", () => {
+  it("prefers digging through a wall into a region the mouse cannot reach", () => {
+    const board = parse_board(["..#..", "..#..", "..#.."]).board;
+    const mouse = create_mouse(0, 0, 0);
+    for (let seed = 1; seed <= 20; seed++) {
+      const run = pick_tunnel(board, { first_row: 0, last_row: 2, first_col: 0, last_col: 4 }, mouse, [1], seeded_random(seed));
+      assert.strictEqual(run.axis, "horizontal");
+      assert.strictEqual(run.cells[0].col, 2);
+    }
+  });
+
+  it("falls back to a spot the mouse can reach when everything is connected", () => {
+    const board = parse_board(["....", "....", "...."]).board;
+    const mouse = create_mouse(0, 0, 0);
+    const run = pick_tunnel(board, { first_row: 0, last_row: 2, first_col: 0, last_col: 3 }, mouse, [1, 2], seeded_random(3));
+    assert.ok(run !== null);
+    assert.strictEqual(cell_at(board, run.before.row, run.before.col).type, "floor");
+    assert.strictEqual(cell_at(board, run.after.row, run.after.col).type, "floor");
+  });
+});
+
+describe("generate_tutorial", () => {
+  it("has one wall, one single tunnel the mouse can walk into, and a reachable cheese", () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const start = create_mouse(3, 0, 0);
+      const tutorial = generate_tutorial(4, 5, start, seeded_random(seed));
+      const walls = cells_of_type(tutorial.board, "wall");
+      const tunnels = cells_of_type(tutorial.board, "tunnel");
+      assert.strictEqual(walls.length, 1, "seed " + seed);
+      assert.strictEqual(tunnels.length, 1, "seed " + seed);
+      assert.ok(has_clear_ends(tutorial.board, tunnels[0]), "seed " + seed);
+      assert.strictEqual(cell_at(tutorial.board, 3, 0).type, "floor");
+
+      const reachable = reachable_floor_cells(tutorial.board, start);
+      const cheese_found = reachable.some((cell) => cell.row === tutorial.cheese.row && cell.col === tutorial.cheese.col);
+      assert.ok(cheese_found, "seed " + seed);
     }
   });
 });

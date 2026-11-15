@@ -1,12 +1,16 @@
 var board_api = typeof require !== "undefined" ? require("./board.js") : window;
 var mouse_api = typeof require !== "undefined" ? require("./mouse.js") : window;
-var { WALL, create_board, cell_at, set_cell } = board_api;
+var { DIRECTIONS, WALL, make_tunnel, create_board, cell_at, set_cell } = board_api;
 var { create_mouse, apply_with_pushes } = mouse_api;
 
 var MAX_MAZE_ROWS = 7;
 var MAX_MAZE_COLS = 10;
 var GENERATION_ATTEMPTS = 60;
 var WALL_CHANCE = 0.2;
+var MAX_TUNNELS = 2;
+var GROW_TUNNEL_CHANCE = 0.35;
+var TUNNEL_LENGTHS = [1, 2];
+var RUN_DIRECTIONS = [1, 2];
 
 var SEARCH_STEPS = [{ type: "forward" }, { type: "backward" }, { type: "turn_right" }, { type: "turn_left" }];
 
@@ -103,12 +107,145 @@ function scatter_terrain(board, region, protected_cells, random) {
   });
 }
 
+function step_from(cell, direction, distance) {
+  var delta = DIRECTIONS[direction];
+  return { row: cell.row + delta.row_delta * distance, col: cell.col + delta.col_delta * distance };
+}
+
+function is_floor(board, cell) {
+  var target = cell_at(board, cell.row, cell.col);
+  return target !== null && target.type === "floor";
+}
+
+function touches_tunnel(board, cell) {
+  return DIRECTIONS.some(function (delta, direction) {
+    var neighbor = step_from(cell, direction, 1);
+    var target = cell_at(board, neighbor.row, neighbor.col);
+    return target !== null && target.type === "tunnel";
+  });
+}
+
+function make_run(first_cell, direction, length) {
+  var cells = [];
+  for (var distance = 0; distance < length; distance++) {
+    cells.push(step_from(first_cell, direction, distance));
+  }
+  var last_cell = cells[cells.length - 1];
+  var axis = "vertical";
+  if (direction === 1) {
+    axis = "horizontal";
+  }
+  return {
+    cells: cells,
+    axis: axis,
+    before: step_from(first_cell, direction, -1),
+    after: step_from(last_cell, direction, 1),
+  };
+}
+
+function run_fits(board, run, region_cells, protected_cells) {
+  var cells_ok = run.cells.every(function (cell) {
+    var in_region = contains_cell(region_cells, cell);
+    var is_protected = contains_cell(protected_cells, cell);
+    return in_region && !is_protected && !touches_tunnel(board, cell);
+  });
+  var ends_clear = is_floor(board, run.before) && is_floor(board, run.after);
+  return cells_ok && ends_clear;
+}
+
+function tunnel_runs(board, region, protected_cells, lengths) {
+  var region_cells = cells_in_region(region);
+  var runs = [];
+  region_cells.forEach(function (first_cell) {
+    RUN_DIRECTIONS.forEach(function (direction) {
+      lengths.forEach(function (length) {
+        var run = make_run(first_cell, direction, length);
+        if (run_fits(board, run, region_cells, protected_cells)) {
+          runs.push(run);
+        }
+      });
+    });
+  });
+  return runs;
+}
+
+function is_all_walls(board, run) {
+  return run.cells.every(function (cell) {
+    return cell_at(board, cell.row, cell.col).type === "wall";
+  });
+}
+
+function pick_tunnel(board, region, mouse, lengths, random) {
+  var runs = tunnel_runs(board, region, [mouse], lengths);
+  var reachable = reachable_floor_cells(board, mouse);
+  var usable = runs.filter(function (run) {
+    return contains_cell(reachable, run.before) || contains_cell(reachable, run.after);
+  });
+  var connecting = usable.filter(function (run) {
+    var both_reachable = contains_cell(reachable, run.before) && contains_cell(reachable, run.after);
+    return is_all_walls(board, run) && !both_reachable;
+  });
+  if (connecting.length > 0) {
+    return random_item(connecting, random);
+  }
+  if (usable.length > 0) {
+    return random_item(usable, random);
+  }
+  return null;
+}
+
+function lay_tunnel(board, run) {
+  run.cells.forEach(function (cell) {
+    set_cell(board, cell.row, cell.col, make_tunnel(run.axis));
+  });
+}
+
+function place_tunnels(board, region, mouse, count, lengths, random) {
+  for (var placed = 0; placed < count; placed++) {
+    var run = pick_tunnel(board, region, mouse, lengths, random);
+    if (run === null) {
+      return;
+    }
+    lay_tunnel(board, run);
+  }
+}
+
+function random_tunnel_count(random) {
+  return 1 + Math.floor(random() * MAX_TUNNELS);
+}
+
 function generate_maze(rows, cols, start_mouse, random) {
   var region = whole_board_region({ rows: rows, cols: cols });
   var all_cells = cells_in_region(region);
   for (var attempt = 0; attempt < GENERATION_ATTEMPTS; attempt++) {
     var board = create_board(rows, cols);
     scatter_terrain(board, region, [start_mouse], random);
+    place_tunnels(board, region, start_mouse, random_tunnel_count(random), TUNNEL_LENGTHS, random);
+    var cheese = pick_cheese(board, start_mouse, all_cells, random);
+    if (cheese !== null) {
+      return { board: board, cheese: cheese };
+    }
+  }
+  var open_board = create_board(rows, cols);
+  var open_cheese = pick_cheese(open_board, start_mouse, all_cells, random);
+  return { board: open_board, cheese: open_cheese };
+}
+
+function generate_tutorial(rows, cols, start_mouse, random) {
+  var region = whole_board_region({ rows: rows, cols: cols });
+  var all_cells = cells_in_region(region);
+  var wall_choices = all_cells.filter(function (cell) {
+    return !contains_cell([start_mouse], cell);
+  });
+  for (var attempt = 0; attempt < GENERATION_ATTEMPTS; attempt++) {
+    var board = create_board(rows, cols);
+    var wall_cell = random_item(wall_choices, random);
+    set_cell(board, wall_cell.row, wall_cell.col, WALL);
+    var run = pick_tunnel(board, region, start_mouse, [1], random);
+    if (run === null) {
+      continue;
+    }
+    lay_tunnel(board, run);
     var cheese = pick_cheese(board, start_mouse, all_cells, random);
     if (cheese !== null) {
       return { board: board, cheese: cheese };
@@ -179,6 +316,11 @@ function grow_maze(board, mouse, random) {
     var expansion = expand_board(board, side);
     var shifted_mouse = create_mouse(mouse.row + expansion.row_shift, mouse.col, mouse.direction, mouse.level);
     scatter_terrain(expansion.board, expansion.region, [], random);
+    var tunnel_count = 0;
+    if (random() < GROW_TUNNEL_CHANCE) {
+      tunnel_count = 1;
+    }
+    place_tunnels(expansion.board, expansion.region, shifted_mouse, tunnel_count, TUNNEL_LENGTHS, random);
     var new_cheese = pick_cheese(expansion.board, shifted_mouse, cells_in_region(expansion.region), random);
     if (new_cheese !== null) {
       return { board: expansion.board, row_shift: expansion.row_shift, cheese: new_cheese };
@@ -201,6 +343,8 @@ if (typeof module !== "undefined") {
     reachable_floor_cells,
     pick_cheese,
     generate_maze,
+    generate_tutorial,
+    pick_tunnel,
     move_cheese,
     choose_growth,
     expand_board,
