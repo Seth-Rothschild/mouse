@@ -1142,7 +1142,7 @@ function draw_horizontal_tunnel(row, col, boxes) {
   var face = boxes.face;
   var outer = boxes.outer;
   var face_height = face.bottom - face.top;
-  var hoop_width = cell_size * 0.09;
+  var hoop_width = cell_size * 0.00;
 
   ctx.save();
   clip_to_box(face);
@@ -1170,7 +1170,7 @@ function draw_vertical_tunnel(row, col, boxes) {
   var face = boxes.face;
   var outer = boxes.outer;
   var face_width = face.right - face.left;
-  var hoop_height = cell_size * 0.09;
+  var hoop_height = cell_size * 0.00;
 
   ctx.save();
   clip_to_box(face);
