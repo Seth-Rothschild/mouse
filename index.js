@@ -67,6 +67,7 @@ var actions = {
   turn_right: { type: "turn_right", color: "#9b59b6", ink: "#fff" },
   turn_left: { type: "turn_left", color: "#E67E22", ink: "#fff" },
   squeak: { type: "squeak", color: "#ff4136", ink: "#fff" },
+  infinity: { type: "infinity", color: "#1abc9c", ink: "#fff" },
 };
 
 var routine_looks = [
@@ -180,7 +181,7 @@ function is_mode_list_open() {
 }
 
 function load_settings() {
-  var settings = { sound_on: true, speed: 1 };
+  var settings = { sound_on: true, speed: 1, infinity_on: false };
   try {
     var saved = JSON.parse(localStorage.getItem(settings_storage_key));
     if (saved) {
@@ -207,6 +208,9 @@ function save_settings() {
 function update_settings_panel() {
   document.getElementById("sound-on").classList.toggle("active", settings.sound_on);
   document.getElementById("sound-off").classList.toggle("active", !settings.sound_on);
+  document.getElementById("infinity-on").classList.toggle("active", settings.infinity_on);
+  document.getElementById("infinity-off").classList.toggle("active", !settings.infinity_on);
+  document.getElementById("btn-infinity").hidden = !settings.infinity_on;
   var speed_options = document.querySelectorAll(".speed-option");
   for (var i = 0; i < speed_options.length; i++) {
     var option_speed = Number(speed_options[i].dataset.speed);
@@ -898,6 +902,14 @@ function reset_program() {
   rebuild_slots();
 }
 
+function can_add_infinity() {
+  if (program.steps.length === 0) {
+    return false;
+  }
+  var last_step = program.steps[program.steps.length - 1];
+  return last_step.type !== "infinity";
+}
+
 function refresh_buttons() {
   var executing = mode === "executing";
   var trial_locked = is_trial_locked();
@@ -909,6 +921,7 @@ function refresh_buttons() {
   for (var i = 0; i < step_button_ids.length; i++) {
     document.getElementById(step_button_ids[i]).disabled = steps_locked;
   }
+  document.getElementById("btn-infinity").disabled = steps_locked || !can_add_infinity();
   document.getElementById("btn-go").disabled = trial_locked;
   document.getElementById("btn-reset").disabled = trial_locked;
   document.getElementById("mode-chip").disabled = executing;
@@ -944,6 +957,10 @@ document.getElementById("btn-right").addEventListener("click", function (event) 
 document.getElementById("btn-squeak").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
   add_step_to_program(actions.squeak);
+});
+document.getElementById("btn-infinity").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  add_step_to_program(actions.infinity);
 });
 document.getElementById("btn-delete").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
@@ -1612,22 +1629,35 @@ function ticks_into_current_beat() {
 
 function update_running_hud() {
   var total_beats = run_plan.steps.length;
-  var current_beat = playback_state.step_index + 1;
+  var current_beat = playback_state.beat_count + 1;
   var total_ticks = total_beats * ticks_per_beat();
   var elapsed_ticks = playback_state.step_index * ticks_per_beat() + ticks_into_current_beat();
   var remaining_ticks = Math.max(total_ticks - elapsed_ticks, 0);
   var progress_percent = Math.min((elapsed_ticks / total_ticks) * 100, 100);
+  if (run_plan.loop_start !== null) {
+    progress_percent = 0;
+  }
 
-  set_text("stat-steps", current_beat.toLocaleString() + " / " + total_beats.toLocaleString());
-  set_text("stat-time", duration_text(remaining_ticks));
+  if (has_infinity(program)) {
+    set_text("stat-steps", current_beat.toLocaleString() + " / ??");
+    set_text("stat-time", "??");
+  } else {
+    set_text("stat-steps", current_beat.toLocaleString() + " / " + total_beats.toLocaleString());
+    set_text("stat-time", duration_text(remaining_ticks));
+  }
   document.getElementById("progress-fill").style.width = progress_percent + "%";
 }
 
 function update_editing_hud() {
+  document.getElementById("progress-fill").style.width = "0%";
+  if (has_infinity(program)) {
+    set_text("stat-steps", "??");
+    set_text("stat-time", "??");
+    return;
+  }
   var step_count = program_step_count();
   set_text("stat-steps", step_count.toLocaleString());
   set_text("stat-time", duration_text(step_count * ticks_per_beat()));
-  document.getElementById("progress-fill").style.width = "0%";
 }
 
 function update_hud() {
@@ -1675,11 +1705,11 @@ function track_frame_time() {
 function loop() {
   track_frame_time();
   if (mode === "executing" && playback_state) {
-    var previous_step_index = playback_state.step_index;
+    var previous_beat_count = playback_state.beat_count;
     record_run_time(trial, frame_ms);
     playback_state = playback_tick(playback_state, run_plan, board, ticks_per_step, ticks_per_pause);
 
-    if (playback_state.step_index !== previous_step_index) {
+    if (playback_state.beat_count !== previous_beat_count) {
       activate_step_effects(run_plan.steps[playback_state.step_index], playback_state.from, playback_state.to);
       update_active_slot();
     }
@@ -1740,6 +1770,14 @@ document.getElementById("sound-on").addEventListener("click", function () {
 
 document.getElementById("sound-off").addEventListener("click", function () {
   change_settings({ sound_on: false });
+});
+
+document.getElementById("infinity-on").addEventListener("click", function () {
+  change_settings({ infinity_on: true });
+});
+
+document.getElementById("infinity-off").addEventListener("click", function () {
+  change_settings({ infinity_on: false });
 });
 
 var speed_options = document.querySelectorAll(".speed-option");

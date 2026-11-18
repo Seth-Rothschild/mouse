@@ -212,16 +212,111 @@ function count_expanded_steps(program) {
   }, 0);
 }
 
-function plan_run(program, start_mouse, board) {
-  var steps = expand_program(program).steps;
+var ATTEMPT_TYPES = ["forward", "backward", "turn_right", "turn_left"];
+
+function step_is_blocked(mouse, step, board) {
+  if (ATTEMPT_TYPES.indexOf(step.type) === -1) {
+    return false;
+  }
+  var attempted = apply_step(mouse, step, board);
+  return same_pose(attempted, mouse);
+}
+
+function has_infinity(program) {
+  function step_has_infinity(step) {
+    if (step.type === "infinity") {
+      return true;
+    }
+    if (step.type === "routine") {
+      return step.steps.some(step_has_infinity);
+    }
+    return false;
+  }
+  return program.steps.some(step_has_infinity);
+}
+
+function run_plain_step(step, mouse, slot_index, board) {
+  var tagged_step = { type: step.type, slot_index: slot_index };
+  var blocked = step_is_blocked(mouse, tagged_step, board);
+  var result = apply_with_pushes(mouse, tagged_step, board);
+  return { beats: result.beats, mouse: result.mouse, hit_wall: blocked, loop_start: null };
+}
+
+function run_item(item, mouse, slot_index, board) {
+  if (item.type === "routine") {
+    return run_sequence(item.steps, mouse, slot_index, board);
+  }
+  return run_plain_step(item, mouse, slot_index, board);
+}
+
+function earlier_beat_count_at_pose(visits, mouse) {
+  var visit = visits.find(function (candidate) {
+    return same_pose(candidate.pose, mouse);
+  });
+  if (visit === undefined) {
+    return null;
+  }
+  return visit.beat_count;
+}
+
+function run_infinity(repeated, mouse, slot_index, board) {
+  var no_change = { beats: [], mouse: mouse, hit_wall: false, loop_start: null };
+  if (!repeated || repeated.type === "infinity") {
+    return no_change;
+  }
+
   var beats = [];
-  var current = start_mouse;
-  steps.forEach(function (step) {
-    var result = apply_with_pushes(current, step, board);
+  var current = mouse;
+  var visits = [{ pose: mouse, beat_count: 0 }];
+  while (true) {
+    var beats_before = beats.length;
+    var result = run_item(repeated, current, slot_index, board);
     beats = beats.concat(result.beats);
     current = result.mouse;
-  });
-  return { steps: beats };
+
+    if (result.loop_start !== null) {
+      return { beats: beats, mouse: current, hit_wall: false, loop_start: beats_before + result.loop_start };
+    }
+    if (result.hit_wall) {
+      return { beats: beats, mouse: current, hit_wall: true, loop_start: null };
+    }
+
+    var loop_start = earlier_beat_count_at_pose(visits, current);
+    if (loop_start !== null) {
+      return { beats: beats, mouse: current, hit_wall: false, loop_start: loop_start };
+    }
+    visits.push({ pose: current, beat_count: beats.length });
+  }
+}
+
+function run_sequence(steps, mouse, forced_slot_index, board) {
+  var beats = [];
+  var current = mouse;
+  var hit_wall = false;
+  for (var index = 0; index < steps.length; index++) {
+    var step = steps[index];
+    var slot_index = forced_slot_index === null ? index : forced_slot_index;
+    var result;
+    if (step.type === "infinity") {
+      result = run_infinity(steps[index - 1], current, slot_index, board);
+    } else {
+      result = run_item(step, current, slot_index, board);
+    }
+    var beats_before = beats.length;
+    beats = beats.concat(result.beats);
+    current = result.mouse;
+
+    if (result.loop_start !== null) {
+      return { beats: beats, mouse: current, hit_wall: hit_wall, loop_start: beats_before + result.loop_start };
+    }
+    hit_wall = hit_wall || result.hit_wall;
+  }
+  return { beats: beats, mouse: current, hit_wall: hit_wall, loop_start: null };
+}
+
+function plan_run(program, start_mouse, board) {
+  var result = run_sequence(program.steps, start_mouse, null, board);
+  return { steps: result.beats, loop_start: result.loop_start };
 }
 
 function reached_cheese(mouse, cheese) {
@@ -233,7 +328,7 @@ function start_playback(program, start_mouse, board) {
     return null;
   }
   var to = apply_step(start_mouse, program.steps[0], board);
-  return { step_index: 0, phase: "moving", ticks_in_phase: 0, from: start_mouse, to: to, done: false };
+  return { step_index: 0, beat_count: 0, phase: "moving", ticks_in_phase: 0, from: start_mouse, to: to, done: false };
 }
 
 function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
@@ -243,6 +338,7 @@ function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
     if (next_ticks < ticks_per_step) {
       return {
         step_index: state.step_index,
+      beat_count: state.beat_count,
         phase: "moving",
         ticks_in_phase: next_ticks,
         from: state.from,
@@ -252,6 +348,7 @@ function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
     }
     return {
       step_index: state.step_index,
+      beat_count: state.beat_count,
       phase: "paused",
       ticks_in_phase: 0,
       from: state.from,
@@ -263,6 +360,7 @@ function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
   if (next_ticks < ticks_per_pause) {
     return {
       step_index: state.step_index,
+      beat_count: state.beat_count,
       phase: "paused",
       ticks_in_phase: next_ticks,
       from: state.from,
@@ -272,9 +370,14 @@ function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
   }
 
   var next_step_index = state.step_index + 1;
+  var loops_forever = program.loop_start !== undefined && program.loop_start !== null;
+  if (next_step_index >= program.steps.length && loops_forever) {
+    next_step_index = program.loop_start;
+  }
   if (next_step_index >= program.steps.length) {
     return {
       step_index: state.step_index,
+      beat_count: state.beat_count,
       phase: "paused",
       ticks_in_phase: next_ticks,
       from: state.from,
@@ -286,6 +389,7 @@ function playback_tick(state, program, board, ticks_per_step, ticks_per_pause) {
   var next_to = apply_step(state.to, program.steps[next_step_index], board);
   return {
     step_index: next_step_index,
+    beat_count: state.beat_count + 1,
     phase: "moving",
     ticks_in_phase: 0,
     from: state.to,
@@ -331,6 +435,7 @@ if (typeof module !== "undefined") {
     apply_step,
     apply_with_pushes,
     plan_run,
+    has_infinity,
     create_program,
     add_step,
     clear_program,

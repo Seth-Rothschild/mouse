@@ -18,6 +18,8 @@ const {
   selection_after_tap,
   expand_program,
   count_expanded_steps,
+  plan_run,
+  has_infinity,
   reached_cheese,
   start_playback,
   playback_tick,
@@ -27,6 +29,7 @@ const {
 } = require("./mouse.js");
 
 const grid = { rows: 5, cols: 7 };
+const { create_board, set_cell, WALL } = require("./board.js");
 
 describe("create_mouse", () => {
   it("returns the given row, col, and direction", () => {
@@ -408,5 +411,113 @@ describe("interpolated_pose", () => {
   it("turns the short way across the 0/270 seam", () => {
     const pose = interpolated_pose({ row: 0, col: 0, direction: 3, level: 0 }, { row: 0, col: 0, direction: 0, level: 0 }, 1);
     assert.strictEqual(pose.angle, 360);
+  });
+});
+
+describe("plan_run with infinity", () => {
+  const board = create_board(1, 6);
+
+  function types_of(plan) {
+    return plan.steps.map((step) => step.type);
+  }
+
+  it("repeats a plain step until it is blocked", () => {
+    const program = program_of(["forward", "infinity"]);
+    const plan = plan_run(program, create_mouse(0, 0, 1), board);
+    assert.strictEqual(plan.steps.length, 6);
+    assert.ok(types_of(plan).every((type) => type === "forward"));
+  });
+
+  it("points the repeated beats at the infinity slot", () => {
+    const program = program_of(["forward", "infinity"]);
+    const plan = plan_run(program, create_mouse(0, 0, 1), board);
+    const slots = plan.steps.map((step) => step.slot_index);
+    assert.deepStrictEqual(slots, [0, 1, 1, 1, 1, 1]);
+  });
+
+  it("stops at a wall block", () => {
+    const walled = create_board(1, 6);
+    set_cell(walled, 0, 3, WALL);
+    const program = program_of(["forward", "infinity"]);
+    const plan = plan_run(program, create_mouse(0, 0, 1), walled);
+    assert.strictEqual(plan.steps.length, 3);
+  });
+
+  it("finishes the routine pass that hit the wall and starts no other", () => {
+    const routine = { type: "routine", steps: [{ type: "forward" }, { type: "squeak" }] };
+    let program = add_step(create_program(), routine);
+    program = add_step(program, { type: "infinity" });
+    const plan = plan_run(program, create_mouse(0, 0, 1), create_board(1, 3));
+    assert.deepStrictEqual(types_of(plan), [
+      "forward", "squeak",
+      "forward", "squeak",
+      "forward", "squeak",
+    ]);
+  });
+
+  it("does nothing when there is no previous step", () => {
+    const first = plan_run(program_of(["infinity", "forward"]), create_mouse(0, 0, 1), board);
+    assert.deepStrictEqual(types_of(first), ["forward"]);
+    const doubled = plan_run(program_of(["forward", "infinity", "infinity"]), create_mouse(0, 0, 1), board);
+    assert.strictEqual(doubled.steps.length, 6);
+  });
+
+  it("marks a loop that never reaches a wall as endless", () => {
+    const open_board = create_board(3, 3);
+    const program = program_of(["turn_right", "infinity"]);
+    const plan = plan_run(program, create_mouse(1, 1, 0), open_board);
+    assert.strictEqual(plan.steps.length, 5);
+    assert.strictEqual(plan.loop_start, 1);
+  });
+
+  it("repeats squeaks forever", () => {
+    const plan = plan_run(program_of(["squeak", "infinity"]), create_mouse(0, 0, 1), board);
+    assert.deepStrictEqual(types_of(plan), ["squeak", "squeak"]);
+    assert.strictEqual(plan.loop_start, 1);
+  });
+
+  it("drops anything after an endless loop", () => {
+    const plan = plan_run(program_of(["squeak", "infinity", "forward"]), create_mouse(0, 0, 1), board);
+    assert.ok(types_of(plan).every((type) => type === "squeak"));
+  });
+
+  it("has no loop marker when the plan finishes", () => {
+    const plan = plan_run(program_of(["forward", "infinity"]), create_mouse(0, 0, 1), board);
+    assert.strictEqual(plan.loop_start, null);
+  });
+
+  it("works for infinity inside a routine", () => {
+    const routine = { type: "routine", steps: [{ type: "forward" }, { type: "infinity" }, { type: "squeak" }] };
+    const program = add_step(create_program(), routine);
+    const plan = plan_run(program, create_mouse(0, 0, 1), board);
+    assert.strictEqual(types_of(plan).length, 7);
+    assert.strictEqual(types_of(plan)[6], "squeak");
+  });
+});
+
+describe("has_infinity", () => {
+  it("finds infinity at the top level and inside routines", () => {
+    assert.strictEqual(has_infinity(program_of(["forward"])), false);
+    assert.strictEqual(has_infinity(program_of(["forward", "infinity"])), true);
+    const inner = { type: "routine", steps: [{ type: "infinity" }] };
+    const outer = { type: "routine", steps: [inner] };
+    assert.strictEqual(has_infinity(add_step(create_program(), outer)), true);
+  });
+});
+
+describe("playback_tick with a looping plan", () => {
+  it("wraps back to the loop start instead of finishing", () => {
+    const plan = { steps: [{ type: "squeak" }, { type: "squeak" }], loop_start: 1 };
+    const board = create_board(1, 3);
+    let state = start_playback(plan, create_mouse(0, 0, 1), board);
+    const seen = [];
+    for (let tick = 0; tick < 60; tick++) {
+      state = playback_tick(state, plan, board, 2, 2);
+      assert.strictEqual(state.done, false);
+      seen.push(state.step_index);
+    }
+    assert.ok(seen.includes(1));
+    assert.ok(state.beat_count > 10);
+    assert.ok(!seen.slice(10).includes(0));
   });
 });

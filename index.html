@@ -27,6 +27,7 @@
             --turn-right: #9b59b6;
             --squeak: #ff4136;
             --go: #2ecc40;
+            --infinity: #1abc9c;
             --neutral: #8a8494;
             --win: #27ae60;
             --try: #e67e22;
@@ -433,12 +434,16 @@
         #btn-backward { grid-column: 2; grid-row: 3; background: var(--backward); color: var(--ink); border-radius: var(--radius) var(--radius) 50% 50%; }
         #btn-squeak { grid-column: 1; grid-row: 1; background: var(--squeak); border-radius: 50%; }
         #btn-reset { grid-column: 3; grid-row: 1; background: var(--backward); color: var(--ink); border-radius: 50%; }
+        .control[hidden] {
+            display: none;
+        }
         .corner {
             position: relative;
             top: calc(-1 * var(--corner-spread));
         }
         #btn-squeak { left: calc(-1 * var(--corner-spread)); }
         #btn-reset { left: var(--corner-spread); }
+        #btn-infinity { grid-column: 3; grid-row: 3; background: var(--infinity); border-radius: 50%; top: var(--corner-spread); left: var(--corner-spread); }
 
         .action-button {
             width: 120px;
@@ -895,6 +900,7 @@
             <symbol id="icon-backward" viewBox="0 0 24 24"><path d="M12 4v15M5 12.5l7 7 7-7"/></symbol>
             <symbol id="icon-turn_right" viewBox="0 0 24 24"><path d="M6 20v-8a5 5 0 0 1 5-5h8M15 3l4 4-4 4"/></symbol>
             <symbol id="icon-turn_left" viewBox="0 0 24 24"><path d="M18 20v-8a5 5 0 0 0-5-5H5M9 3L5 7l4 4"/></symbol>
+            <symbol id="icon-infinity" viewBox="0 0 24 24"><path d="M12 12c-2-3-3.5-4.5-5.5-4.5a4.5 4.5 0 0 0 0 9C8.5 16.5 10 15 12 12zm0 0c2 3 3.5 4.5 5.5 4.5a4.5 4.5 0 0 0 0-9C15.5 7.5 14 9 12 12z"/></symbol>
             <symbol id="icon-squeak" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
             <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 4v5h5"/><path d="M4.5 9A8 8 0 1 1 4 13"/></symbol>
             <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
@@ -938,6 +944,13 @@
                             </div>
                         </div>
                         <div class="setting-row">
+                            <span class="setting-name">Infinity</span>
+                            <div class="segmented">
+                                <button class="segment" id="infinity-on">On</button>
+                                <button class="segment" id="infinity-off">Off</button>
+                            </div>
+                        </div>
+                        <div class="setting-row">
                             <span class="setting-name">Speed</span>
                             <div class="segmented">
                                 <button class="segment speed-option" data-speed="1">1×</button>
@@ -973,6 +986,7 @@
             <button class="control" id="btn-right" title="Turn right"><svg class="icon"><use href="#icon-turn_right"/></svg></button>
             <button class="control" id="btn-backward" title="Step backward"><svg class="icon"><use href="#icon-backward"/></svg></button>
             <button class="control corner" id="btn-squeak" title="Squeak"><svg class="icon"><use href="#icon-squeak"/></svg><span class="control-label">SQUEAK</span></button>
+            <button class="control corner" id="btn-infinity" title="Repeat the previous move until it hits a wall"><svg class="icon"><use href="#icon-infinity"/></svg></button>
             <button class="control corner" id="btn-reset" title="Clear the program"><svg class="icon"><use href="#icon-reset"/></svg><span class="control-label">RESET</span></button>
         </div>
         <div id="routine-row"></div>
