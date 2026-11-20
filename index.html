@@ -698,6 +698,21 @@
             font-weight: 700;
             letter-spacing: 1px;
         }
+        .build-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .build-actions .action-button {
+            width: 97px;
+            height: 48px;
+            font-size: 16px;
+        }
+        #btn-trial {
+            background: var(--squeak);
+        }
+        #btn-share {
+            background: var(--forward);
+        }
         .results-stats {
             width: 100%;
             margin: 0 0 8px;
@@ -1212,6 +1227,10 @@
                 </div>
             </div>
             <button class="action-button" id="btn-play" title="Play your level">▶ PLAY</button>
+            <div class="build-actions">
+                <button class="action-button" id="btn-trial" title="Time trial: find 10 cheeses in your level">⏱ TRIAL</button>
+                <button class="action-button" id="btn-share" title="Copy a link to your level">SHARE</button>
+            </div>
         </div>
     </div>
     <div class="sidebar">

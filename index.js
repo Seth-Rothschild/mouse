@@ -61,6 +61,7 @@ var trial = create_trial();
 
 var custom_board = create_board(5, 7);
 var build_phase = "edit";
+var trial_on_build = false;
 var build_tool = "wall";
 var tool_orientations = { tunnel: "horizontal", stairs: 0 };
 var paint_stroke = null;
@@ -189,6 +190,12 @@ function setup_build() {
   build_phase = "edit";
 }
 
+function setup_build_trial() {
+  board = custom_board;
+  start_mouse = build_start_mouse(custom_board);
+  cheese = pick_build_cheese(custom_board, null, Math.random);
+}
+
 function update_mode_menu() {
   document.getElementById("mode-chip-label").textContent = mode_names[game_mode];
   var options = document.querySelectorAll(".mode-option");
@@ -275,7 +282,9 @@ function select_game_mode(new_mode) {
     routines = [];
     rebuild_routine_row();
   }
-  if (game_mode === "puzzle" || game_mode === "time_trial") {
+  if (game_mode === "time_trial" && trial_on_build) {
+    setup_build_trial();
+  } else if (game_mode === "puzzle" || game_mode === "time_trial") {
     setup_puzzle();
   } else if (game_mode === "maze") {
     setup_maze();
@@ -320,12 +329,12 @@ function advance_to_next_level() {
     return;
   }
   set_levels_completed(levels_completed + 1);
-  if (game_mode === "puzzle" || game_mode === "time_trial") {
+  if (game_mode === "build" || trial_on_build) {
+    advance_custom_level();
+  } else if (game_mode === "puzzle" || game_mode === "time_trial") {
     advance_puzzle();
   } else if (game_mode === "maze") {
     grow_current_maze();
-  } else if (game_mode === "build") {
-    advance_custom_level();
   } else {
     cheese = move_cheese(board, mouse, Math.random);
   }
@@ -1886,8 +1895,9 @@ function build_status_text() {
 
 function update_build_ui() {
   var playing_build = game_mode === "build" && build_phase === "play";
+  var can_go_back_to_build = playing_build || trial_on_build;
   document.body.classList.toggle("building", is_building());
-  document.getElementById("btn-edit").hidden = !playing_build;
+  document.getElementById("btn-edit").hidden = !can_go_back_to_build;
   if (game_mode === "build") {
     update_tool_tiles();
     update_size_controls();
@@ -1903,11 +1913,71 @@ function load_custom_board() {
   update_size_controls();
 }
 
+function share_url() {
+  var page = location.href.split("#")[0];
+  return page + build_hash(custom_board);
+}
+
+function ask_to_copy_by_hand(url) {
+  window.prompt("Copy this link to share your level:", url);
+}
+
+function share_build() {
+  var url = share_url();
+  if (!navigator.clipboard) {
+    ask_to_copy_by_hand(url);
+    return;
+  }
+  navigator.clipboard.writeText(url).then(
+    function () {
+      set_message("Link copied!", "win");
+      play_click_sound();
+    },
+    function () {
+      ask_to_copy_by_hand(url);
+    },
+  );
+}
+
+function load_shared_build() {
+  var shared_board = board_from_hash(location.hash);
+  if (shared_board === null) {
+    return false;
+  }
+  custom_board = shared_board;
+  clear_address_hash();
+  return true;
+}
+
+function clear_address_hash() {
+  var page_without_hash = location.pathname + location.search;
+  try {
+    history.replaceState(null, "", page_without_hash);
+  } catch (error) {
+    return;
+  }
+}
+
+function check_room_to_play() {
+  if (has_room_for_cheese(custom_board)) {
+    return true;
+  }
+  set_message("The mouse needs room to move!", "try");
+  trigger_shake(6, 220);
+  play_thud_sound();
+  return false;
+}
+
+function start_build_trial() {
+  if (!check_room_to_play()) {
+    return;
+  }
+  trial_on_build = true;
+  select_game_mode("time_trial");
+}
+
 function start_playing_build() {
-  if (!has_room_for_cheese(custom_board)) {
-    set_message("The mouse needs room to move!", "try");
-    trigger_shake(6, 220);
-    play_thud_sound();
+  if (!check_room_to_play()) {
     return;
   }
   build_phase = "play";
@@ -1917,6 +1987,11 @@ function start_playing_build() {
 
 function back_to_building() {
   if (mode === "executing") {
+    return;
+  }
+  if (trial_on_build) {
+    trial_on_build = false;
+    select_game_mode("build");
     return;
   }
   build_phase = "edit";
@@ -2026,9 +2101,7 @@ function update_size_controls() {
 function change_level_size(row_change, col_change) {
   var rows = custom_board.rows + row_change;
   var cols = custom_board.cols + col_change;
-  var rows_ok = rows >= BUILD_MIN_SIZE && rows <= BUILD_MAX_ROWS;
-  var cols_ok = cols >= BUILD_MIN_SIZE && cols <= BUILD_MAX_COLS;
-  if (!rows_ok || !cols_ok) {
+  if (!is_allowed_size(rows, cols)) {
     return;
   }
   custom_board = resize_board(custom_board, rows, cols);
@@ -2186,6 +2259,14 @@ document.getElementById("btn-play").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
   start_playing_build();
 });
+document.getElementById("btn-trial").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  start_build_trial();
+});
+document.getElementById("btn-share").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  share_build();
+});
 document.getElementById("btn-edit").addEventListener("click", back_to_building);
 
 document.getElementById("mode-chip").addEventListener("click", function () {
@@ -2199,6 +2280,7 @@ for (var mode_index = 0; mode_index < mode_options.length; mode_index++) {
     if (mode === "executing") {
       return;
     }
+    trial_on_build = false;
     select_game_mode(event.currentTarget.dataset.mode);
   });
 }
@@ -2251,5 +2333,9 @@ document.addEventListener("keydown", function (event) {
 apply_settings();
 draw_all_tool_icons();
 rebuild_routine_row();
-select_game_mode("tutorial");
+if (load_shared_build()) {
+  select_game_mode("build");
+} else {
+  select_game_mode("tutorial");
+}
 loop();

@@ -10,6 +10,10 @@ const {
   resize_board,
   has_room_for_cheese,
   pick_build_cheese,
+  encode_board,
+  decode_board,
+  build_hash,
+  board_from_hash,
 } = require("./builder.js");
 
 function board_from(lines) {
@@ -162,5 +166,43 @@ describe("cheese placement", () => {
     assert.strictEqual(pick_build_cheese(board, null, always(0)), null);
     const corridor = board_from(["S."]);
     assert.deepStrictEqual(pick_build_cheese(corridor, { row: 0, col: 1 }, always(0)), { row: 0, col: 1 });
+  });
+});
+
+describe("sharing a build", () => {
+  it("writes every kind of terrain as one letter per square", () => {
+    const board = board_from(["#=H+", "URDL", "S..."]);
+    assert.strictEqual(encode_board(board), "whvb-urdl-....");
+  });
+
+  it("reads back the same board it wrote", () => {
+    const board = board_from(["#=H+.", "URDL#", "S...."]);
+    assert.deepStrictEqual(decode_board(encode_board(board)), board);
+  });
+
+  it("round trips through the address bar", () => {
+    const board = board_from(["#.", "S="]);
+    const hash = build_hash(board);
+    assert.strictEqual(hash, "#build=w.-.h");
+    assert.deepStrictEqual(board_from_hash(hash), board);
+  });
+
+  it("always clears the start spot for the mouse", () => {
+    const board = decode_board("..-w.");
+    assert.strictEqual(cell_at(board, 1, 0).type, "floor");
+  });
+
+  it("refuses codes that are not a level", () => {
+    assert.strictEqual(decode_board(""), null);
+    assert.strictEqual(decode_board(null), null);
+    assert.strictEqual(decode_board("..-..."), null);
+    assert.strictEqual(decode_board("..-.x"), null);
+    assert.strictEqual(decode_board("."), null);
+    assert.strictEqual(decode_board("..........................................."), null);
+  });
+
+  it("ignores hashes that are not builds", () => {
+    assert.strictEqual(board_from_hash(""), null);
+    assert.strictEqual(board_from_hash("#other=..-.."), null);
   });
 });

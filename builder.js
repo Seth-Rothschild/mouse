@@ -189,6 +189,91 @@ function pick_build_cheese(board, previous_cheese, random) {
   return choices[Math.floor(random() * choices.length)];
 }
 
+var BUILD_HASH_PREFIX = "#build=";
+var ROW_SEPARATOR = "-";
+var TUNNEL_CODES = { horizontal: "h", vertical: "v" };
+var STAIRS_CODES = ["u", "r", "d", "l"];
+var PLAIN_CODES = { floor: ".", wall: "w", bridge: "b" };
+var CELLS_BY_CODE = {
+  ".": FLOOR,
+  w: WALL,
+  b: BRIDGE,
+  h: make_tunnel("horizontal"),
+  v: make_tunnel("vertical"),
+  u: make_stairs(0),
+  r: make_stairs(1),
+  d: make_stairs(2),
+  l: make_stairs(3),
+};
+
+function cell_code(cell) {
+  if (cell.type === "tunnel") {
+    return TUNNEL_CODES[cell.axis];
+  }
+  if (cell.type === "stairs") {
+    return STAIRS_CODES[cell.direction];
+  }
+  return PLAIN_CODES[cell.type];
+}
+
+function encode_board(board) {
+  var row_codes = [];
+  for (var row = 0; row < board.rows; row++) {
+    var row_code = "";
+    for (var col = 0; col < board.cols; col++) {
+      row_code += cell_code(cell_at(board, row, col));
+    }
+    row_codes.push(row_code);
+  }
+  return row_codes.join(ROW_SEPARATOR);
+}
+
+function is_allowed_size(rows, cols) {
+  var rows_ok = rows >= BUILD_MIN_SIZE && rows <= BUILD_MAX_ROWS;
+  var cols_ok = cols >= BUILD_MIN_SIZE && cols <= BUILD_MAX_COLS;
+  return rows_ok && cols_ok;
+}
+
+function decode_board(code) {
+  if (!code) {
+    return null;
+  }
+  var row_codes = code.split(ROW_SEPARATOR);
+  var rows = row_codes.length;
+  var cols = row_codes[0].length;
+  if (!is_allowed_size(rows, cols)) {
+    return null;
+  }
+  var board = create_board(rows, cols);
+  for (var row = 0; row < rows; row++) {
+    if (row_codes[row].length !== cols) {
+      return null;
+    }
+    for (var col = 0; col < cols; col++) {
+      var symbol = row_codes[row][col];
+      if (!(symbol in CELLS_BY_CODE)) {
+        return null;
+      }
+      set_cell(board, row, col, CELLS_BY_CODE[symbol]);
+    }
+  }
+  var start = build_start_spot(board);
+  set_cell(board, start.row, start.col, FLOOR);
+  return board;
+}
+
+function build_hash(board) {
+  return BUILD_HASH_PREFIX + encode_board(board);
+}
+
+function board_from_hash(hash) {
+  if (!hash.startsWith(BUILD_HASH_PREFIX)) {
+    return null;
+  }
+  var code = hash.slice(BUILD_HASH_PREFIX.length);
+  return decode_board(code);
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     BUILD_MIN_SIZE,
@@ -207,5 +292,10 @@ if (typeof module !== "undefined") {
     resize_board,
     has_room_for_cheese,
     pick_build_cheese,
+    is_allowed_size,
+    encode_board,
+    decode_board,
+    build_hash,
+    board_from_hash,
   };
 }
