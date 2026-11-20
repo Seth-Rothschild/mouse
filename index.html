@@ -521,6 +521,9 @@
             font-size: 28px;
             font-weight: 700;
         }
+        .trial-goal-picker {
+            margin-bottom: 6px;
+        }
         .trial-blurb {
             margin: 0 0 6px;
             font-size: 16px;
@@ -531,7 +534,7 @@
             color: var(--win);
         }
 
-        .edit-chip {
+        .trial-chip {
             padding: 6px 14px;
             border: 3px solid var(--ink);
             border-radius: 999px;
@@ -544,15 +547,15 @@
             box-shadow: 0 3px 0 var(--ink);
             transition: transform 0.05s, box-shadow 0.05s;
         }
-        .edit-chip:active {
+        .trial-chip:active {
             transform: translateY(3px);
             box-shadow: 0 0 0 var(--ink);
         }
-        .edit-chip:disabled {
+        .trial-chip:disabled {
             cursor: default;
             opacity: 0.5;
         }
-        .edit-chip[hidden] {
+        .trial-chip[hidden] {
             display: none;
         }
 
@@ -698,20 +701,11 @@
             font-weight: 700;
             letter-spacing: 1px;
         }
-        .build-actions {
-            display: flex;
-            gap: 8px;
-        }
-        .build-actions .action-button {
-            width: 97px;
-            height: 48px;
-            font-size: 16px;
-        }
-        #btn-trial {
-            background: var(--squeak);
-        }
         #btn-share {
+            width: 202px;
+            height: 48px;
             background: var(--forward);
+            font-size: 16px;
         }
         .results-stats {
             width: 100%;
@@ -973,14 +967,14 @@
             .build-tools {
                 margin-top: 14px;
             }
-            .edit-chip {
+            .trial-chip {
                 font-size: 15px;
                 padding: 4px 12px;
             }
         }
 
         @media (max-width: 420px) {
-            .edit-label {
+            .trial-chip-label {
                 display: none;
             }
         }
@@ -1121,7 +1115,7 @@
         <header class="top-bar">
             <h1 class="title">Pseudo Mouse</h1>
             <div class="top-bar-actions">
-                <button class="edit-chip" id="btn-edit" title="Back to building" hidden>✎<span class="edit-label"> Edit</span></button>
+                <button class="trial-chip" id="btn-trial" title="Time trial: find 10 cheeses on this map" hidden>⏱<span class="trial-chip-label"> Trial</span></button>
                 <div class="mode-menu">
                     <button class="mode-chip" id="mode-chip" aria-haspopup="true" aria-expanded="false">
                         <span id="mode-chip-label">Tutorial</span>
@@ -1188,7 +1182,13 @@
                 <div class="trial-start" id="trial-start" hidden>
                     <div class="trial-card">
                         <h2 class="trial-heading">Time Trial</h2>
-                        <p class="trial-blurb">Find 10 cheeses using as few button presses as you can.</p>
+                        <p class="trial-blurb">Find <span class="trial-goal-count">5</span> cheeses using as few button presses as you can.</p>
+                        <div class="segmented trial-goal-picker">
+                            <button class="segment goal-option" data-goal="3">3</button>
+                            <button class="segment goal-option" data-goal="5">5</button>
+                            <button class="segment goal-option" data-goal="10">10</button>
+                            <button class="segment goal-option" data-goal="20">20</button>
+                        </div>
                         <button class="action-button" id="btn-start">START</button>
                     </div>
                 </div>
@@ -1227,10 +1227,7 @@
                 </div>
             </div>
             <button class="action-button" id="btn-play" title="Play your level">▶ PLAY</button>
-            <div class="build-actions">
-                <button class="action-button" id="btn-trial" title="Time trial: find 10 cheeses in your level">⏱ TRIAL</button>
-                <button class="action-button" id="btn-share" title="Copy a link to your level">SHARE</button>
-            </div>
+            <button class="action-button" id="btn-share" title="Copy a link to your level">SHARE</button>
         </div>
     </div>
     <div class="sidebar">
@@ -1250,7 +1247,7 @@
     <div class="results-screen" id="trial-results" hidden>
         <div class="trial-card results-card">
             <h2 class="trial-heading">You win!</h2>
-            <p class="trial-blurb">All 10 cheeses found.</p>
+            <p class="trial-blurb">All <span class="trial-goal-count">5</span> cheeses found.</p>
             <dl class="results-stats">
                 <div class="result result-main"><dt>Button presses</dt><dd id="result-presses">0</dd></div>
                 <div class="result"><dt>Total time</dt><dd id="result-time">0:00.0</dd></div>

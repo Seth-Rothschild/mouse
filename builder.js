@@ -17,7 +17,7 @@ var {
   crossing_axis,
 } = board_api;
 var { create_mouse } = mouse_api;
-var { reachable_floor_cells, MAX_MAZE_ROWS, MAX_MAZE_COLS } = maze_api;
+var { reachable_cheese_cells, MAX_MAZE_ROWS, MAX_MAZE_COLS } = maze_api;
 
 var BUILD_MIN_SIZE = 2;
 var BUILD_MAX_ROWS = MAX_MAZE_ROWS;
@@ -164,15 +164,15 @@ function resize_board(board, rows, cols) {
 }
 
 function cheese_choices(board) {
-  var start = build_start_spot(board);
-  var reachable = reachable_floor_cells(board, build_start_mouse(board));
-  return reachable.filter(function (spot) {
-    return !is_same_spot(spot, start);
-  });
+  return reachable_cheese_cells(board, build_start_mouse(board));
 }
 
 function has_room_for_cheese(board) {
-  return cheese_choices(board).length > 0;
+  var start = build_start_spot(board);
+  var spots_away_from_start = cheese_choices(board).filter(function (spot) {
+    return !is_same_spot(spot, start);
+  });
+  return spots_away_from_start.length > 0;
 }
 
 function pick_build_cheese(board, previous_cheese, random) {

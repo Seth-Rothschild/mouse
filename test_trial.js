@@ -1,7 +1,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const {
-  TRIAL_GOAL,
   create_trial,
   start_trial,
   record_button_press,
@@ -23,13 +22,13 @@ function record_everything_once(trial) {
 
 describe("trial counters", () => {
   it("ignore everything before the trial starts", () => {
-    const trial = create_trial();
+    const trial = create_trial(5);
     record_everything_once(trial);
-    assert.deepStrictEqual(trial, create_trial());
+    assert.deepStrictEqual(trial, create_trial(5));
   });
 
   it("count presses, squeaks, run time and solves while running", () => {
-    const trial = create_trial();
+    const trial = create_trial(5);
     start_trial(trial, 0);
     record_everything_once(trial);
     record_button_press(trial);
@@ -42,29 +41,42 @@ describe("trial counters", () => {
   });
 
   it("stop counting once the goal is reached", () => {
-    const trial = create_trial();
+    const trial = create_trial(5);
     start_trial(trial, 0);
-    for (let i = 0; i < TRIAL_GOAL; i++) {
+    for (let i = 0; i < 5; i++) {
       record_solve(trial, 5000);
     }
     assert.strictEqual(trial.phase, "won");
     record_button_press(trial);
     record_solve(trial, 9000);
     assert.strictEqual(trial.button_presses, 0);
-    assert.strictEqual(trial.solved, TRIAL_GOAL);
+    assert.strictEqual(trial.solved, 5);
+  });
+});
+
+describe("trial goal", () => {
+  it("is won after exactly the chosen number of solves", () => {
+    const trial = create_trial(3);
+    start_trial(trial, 0);
+    record_solve(trial, 1000);
+    record_solve(trial, 2000);
+    assert.strictEqual(trial.phase, "running");
+    record_solve(trial, 3000);
+    assert.strictEqual(trial.phase, "won");
+    assert.strictEqual(trial.finished_at, 3000);
   });
 });
 
 describe("trial_elapsed_ms", () => {
   it("is zero while waiting", () => {
-    assert.strictEqual(trial_elapsed_ms(create_trial(), 12345), 0);
+    assert.strictEqual(trial_elapsed_ms(create_trial(5), 12345), 0);
   });
 
   it("ticks while running and freezes when won", () => {
-    const trial = create_trial();
+    const trial = create_trial(5);
     start_trial(trial, 1000);
     assert.strictEqual(trial_elapsed_ms(trial, 4000), 3000);
-    for (let i = 0; i < TRIAL_GOAL; i++) {
+    for (let i = 0; i < 5; i++) {
       record_solve(trial, 7000);
     }
     assert.strictEqual(trial_elapsed_ms(trial, 99000), 6000);

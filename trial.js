@@ -1,7 +1,9 @@
-var TRIAL_GOAL = 10;
+var TRIAL_GOAL_CHOICES = [3, 5, 10, 20];
+var DEFAULT_TRIAL_GOAL = 5;
 
-function create_trial() {
+function create_trial(goal) {
   return {
+    goal: goal,
     phase: "waiting",
     started_at: null,
     finished_at: null,
@@ -54,7 +56,7 @@ function record_solve(trial, now) {
     return;
   }
   trial.solved += 1;
-  if (trial.solved >= TRIAL_GOAL) {
+  if (trial.solved >= trial.goal) {
     trial.phase = "won";
     trial.finished_at = now;
   }
@@ -82,7 +84,8 @@ function clock_text(ms) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    TRIAL_GOAL,
+    TRIAL_GOAL_CHOICES,
+    DEFAULT_TRIAL_GOAL,
     create_trial,
     is_trial_running,
     start_trial,

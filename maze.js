@@ -55,6 +55,28 @@ function reachable_floor_cells(board, start_mouse) {
   return cells;
 }
 
+function can_hold_cheese(cell, level) {
+  var on_floor = cell.type === "floor" && level === 0;
+  var on_top_of_wall = cell.type === "wall" && level === 1;
+  return on_floor || on_top_of_wall;
+}
+
+function reachable_cheese_cells(board, start_mouse) {
+  var found = search_poses(board, start_mouse);
+  var seen = {};
+  var cells = [];
+  Object.keys(found).forEach(function (key) {
+    var pose = found[key].pose;
+    var cell_key = pose.row + "," + pose.col;
+    var cell = cell_at(board, pose.row, pose.col);
+    if (can_hold_cheese(cell, pose.level) && !seen[cell_key]) {
+      seen[cell_key] = true;
+      cells.push({ row: pose.row, col: pose.col });
+    }
+  });
+  return cells;
+}
+
 function random_item(items, random) {
   return items[Math.floor(random() * items.length)];
 }
@@ -80,7 +102,7 @@ function contains_cell(cells, target) {
 }
 
 function pick_cheese(board, mouse, candidate_cells, random) {
-  var reachable = reachable_floor_cells(board, mouse);
+  var reachable = reachable_cheese_cells(board, mouse);
   var choices = candidate_cells.filter(function (cell) {
     var is_mouse_cell = cell.row === mouse.row && cell.col === mouse.col;
     return contains_cell(reachable, cell) && !is_mouse_cell;
@@ -341,6 +363,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     search_poses,
     reachable_floor_cells,
+    reachable_cheese_cells,
     pick_cheese,
     generate_maze,
     generate_tutorial,

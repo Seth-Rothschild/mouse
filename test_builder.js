@@ -24,6 +24,15 @@ function always(value) {
   return () => value;
 }
 
+function every_cheese_spot(board, previous_cheese) {
+  const spots = new Set();
+  for (let roll = 0; roll < 1; roll += 0.01) {
+    const cheese = pick_build_cheese(board, previous_cheese, always(roll));
+    spots.add(cheese.row + "," + cheese.col);
+  }
+  return [...spots].sort();
+}
+
 describe("the start spot", () => {
   it("is the bottom left corner with the mouse facing up", () => {
     assert.deepStrictEqual(build_start_mouse(create_board(4, 6)), create_mouse(3, 0, 0));
@@ -145,13 +154,28 @@ describe("cheese placement", () => {
     assert.strictEqual(has_room_for_cheese(board_from(["...", "##.", "S#."])), false);
   });
 
-  it("only picks floor the mouse can reach, never the start", () => {
+  it("only picks floor the mouse can reach", () => {
     const board = board_from(["..#.", "..#.", "S.#."]);
     for (let roll = 0; roll < 1; roll += 0.05) {
       const cheese = pick_build_cheese(board, null, always(roll));
       assert.ok(cheese.col < 2, "cheese landed behind the wall");
-      assert.notDeepStrictEqual(cheese, { row: 2, col: 0 });
     }
+  });
+
+  it("can land on the start", () => {
+    assert.deepStrictEqual(every_cheese_spot(board_from(["S."]), null), ["0,0", "0,1"]);
+  });
+
+  it("lands on top of a wall the mouse can climb, never on the stairs", () => {
+    assert.deepStrictEqual(every_cheese_spot(board_from(["#", "U", "S"]), null), ["0,0", "2,0"]);
+  });
+
+  it("never lands in a tunnel", () => {
+    assert.deepStrictEqual(every_cheese_spot(board_from([".", "H", "S"]), null), ["0,0", "2,0"]);
+  });
+
+  it("has room when the only spot away from the start is up some stairs", () => {
+    assert.strictEqual(has_room_for_cheese(board_from(["#", "U", "S"])), true);
   });
 
   it("moves somewhere new after being found", () => {
@@ -161,11 +185,14 @@ describe("cheese placement", () => {
     }
   });
 
-  it("stays put when there is nowhere else to go", () => {
-    const board = board_from(["#.", "S#"]);
-    assert.strictEqual(pick_build_cheese(board, null, always(0)), null);
+  it("goes back to the start when that is the only other spot", () => {
     const corridor = board_from(["S."]);
-    assert.deepStrictEqual(pick_build_cheese(corridor, { row: 0, col: 1 }, always(0)), { row: 0, col: 1 });
+    assert.deepStrictEqual(pick_build_cheese(corridor, { row: 0, col: 1 }, always(0)), { row: 0, col: 0 });
+  });
+
+  it("stays put when there is nowhere else to go", () => {
+    const boxed_in = board_from(["#.", "S#"]);
+    assert.deepStrictEqual(pick_build_cheese(boxed_in, { row: 1, col: 0 }, always(0)), { row: 1, col: 0 });
   });
 });
 

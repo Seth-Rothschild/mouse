@@ -57,11 +57,10 @@ var common_refresh_rates = [30, 60, 75, 90, 120, 144, 165, 240];
 var counted_program = null;
 var counted_steps = 0;
 
-var trial = create_trial();
+var trial = create_trial(settings.trial_goal);
 
 var custom_board = create_board(5, 7);
-var build_phase = "edit";
-var trial_on_build = false;
+var fixed_board = null;
 var build_tool = "wall";
 var tool_orientations = { tunnel: "horizontal", stairs: 0 };
 var paint_stroke = null;
@@ -113,7 +112,7 @@ function status_text() {
     return "Maze " + board.rows + " \u00d7 " + board.cols + " \u00b7 " + stars + " found";
   }
   if (game_mode === "time_trial") {
-    return trial.solved + " / " + TRIAL_GOAL + " solved";
+    return trial.solved + " / " + trial.goal + " solved";
   }
   if (game_mode === "build") {
     return build_status_text();
@@ -187,13 +186,12 @@ function setup_build() {
   board = custom_board;
   start_mouse = build_start_mouse(custom_board);
   cheese = null;
-  build_phase = "edit";
 }
 
-function setup_build_trial() {
-  board = custom_board;
-  start_mouse = build_start_mouse(custom_board);
-  cheese = pick_build_cheese(custom_board, null, Math.random);
+function setup_fixed_board() {
+  board = fixed_board;
+  start_mouse = build_start_mouse(fixed_board);
+  cheese = pick_build_cheese(fixed_board, null, Math.random);
 }
 
 function update_mode_menu() {
@@ -214,7 +212,7 @@ function is_mode_list_open() {
 }
 
 function load_settings() {
-  var settings = { sound_on: true, speed: 1, infinity_on: false };
+  var settings = { sound_on: true, speed: 1, infinity_on: false, trial_goal: DEFAULT_TRIAL_GOAL };
   try {
     var saved = JSON.parse(localStorage.getItem(settings_storage_key));
     if (saved) {
@@ -226,6 +224,10 @@ function load_settings() {
   var speed_is_allowed = speed_choices.indexOf(settings.speed) !== -1;
   if (!speed_is_allowed) {
     settings.speed = 1;
+  }
+  var trial_goal_is_allowed = TRIAL_GOAL_CHOICES.indexOf(settings.trial_goal) !== -1;
+  if (!trial_goal_is_allowed) {
+    settings.trial_goal = DEFAULT_TRIAL_GOAL;
   }
   return settings;
 }
@@ -249,6 +251,28 @@ function update_settings_panel() {
     var option_speed = Number(speed_options[i].dataset.speed);
     speed_options[i].classList.toggle("active", option_speed === settings.speed);
   }
+  update_trial_goal_picker();
+}
+
+function update_trial_goal_picker() {
+  var goal_options = document.querySelectorAll(".goal-option");
+  for (var i = 0; i < goal_options.length; i++) {
+    var option_goal = Number(goal_options[i].dataset.goal);
+    goal_options[i].classList.toggle("active", option_goal === settings.trial_goal);
+  }
+  var goal_counts = document.querySelectorAll(".trial-goal-count");
+  for (var j = 0; j < goal_counts.length; j++) {
+    goal_counts[j].textContent = String(settings.trial_goal);
+  }
+}
+
+function pick_trial_goal(goal) {
+  if (trial.phase !== "waiting") {
+    return;
+  }
+  change_settings({ trial_goal: goal });
+  trial.goal = goal;
+  update_status();
 }
 
 function apply_settings() {
@@ -277,13 +301,14 @@ function is_settings_panel_open() {
 
 function select_game_mode(new_mode) {
   game_mode = new_mode;
-  trial = create_trial();
+  trial = create_trial(settings.trial_goal);
   if (game_mode === "time_trial") {
     routines = [];
     rebuild_routine_row();
   }
-  if (game_mode === "time_trial" && trial_on_build) {
-    setup_build_trial();
+  var playing_puzzle_or_trial = game_mode === "puzzle" || game_mode === "time_trial";
+  if (playing_puzzle_or_trial && fixed_board !== null) {
+    setup_fixed_board();
   } else if (game_mode === "puzzle" || game_mode === "time_trial") {
     setup_puzzle();
   } else if (game_mode === "maze") {
@@ -329,8 +354,8 @@ function advance_to_next_level() {
     return;
   }
   set_levels_completed(levels_completed + 1);
-  if (game_mode === "build" || trial_on_build) {
-    advance_custom_level();
+  if (fixed_board !== null) {
+    cheese = pick_build_cheese(fixed_board, cheese, Math.random);
   } else if (game_mode === "puzzle" || game_mode === "time_trial") {
     advance_puzzle();
   } else if (game_mode === "maze") {
@@ -965,7 +990,7 @@ function refresh_buttons() {
   document.getElementById("btn-go").disabled = trial_locked;
   document.getElementById("btn-reset").disabled = trial_locked;
   document.getElementById("mode-chip").disabled = executing;
-  document.getElementById("btn-edit").disabled = executing;
+  document.getElementById("btn-trial").disabled = executing;
   if (executing) {
     set_mode_list_open(false);
   }
@@ -1653,7 +1678,8 @@ function render() {
 
   draw_floor();
   draw_treadmills();
-  if (cheese) {
+  var cheese_on_wall = cheese && cell_at(board, cheese.row, cheese.col).type === "wall";
+  if (cheese && !cheese_on_wall) {
     draw_cheese(cheese);
   }
   draw_trail();
@@ -1683,6 +1709,9 @@ function render() {
     draw_mouse(pose, draw_options);
   }
   draw_terrain_tops(covered_cell_for(pose));
+  if (cheese_on_wall) {
+    draw_cheese(cheese);
+  }
   if (draw_options.lifted) {
     draw_mouse(pose, draw_options);
   }
@@ -1880,13 +1909,10 @@ function loop() {
 }
 
 function is_building() {
-  return game_mode === "build" && build_phase === "edit";
+  return game_mode === "build";
 }
 
 function build_status_text() {
-  if (build_phase === "play") {
-    return levels_completed + " found";
-  }
   if (has_room_for_cheese(custom_board)) {
     return "✓ Ready to play";
   }
@@ -1894,10 +1920,8 @@ function build_status_text() {
 }
 
 function update_build_ui() {
-  var playing_build = game_mode === "build" && build_phase === "play";
-  var can_go_back_to_build = playing_build || trial_on_build;
   document.body.classList.toggle("building", is_building());
-  document.getElementById("btn-edit").hidden = !can_go_back_to_build;
+  document.getElementById("btn-trial").hidden = game_mode !== "puzzle";
   if (game_mode === "build") {
     update_tool_tiles();
     update_size_controls();
@@ -1941,11 +1965,11 @@ function share_build() {
 
 function load_shared_build() {
   var shared_board = board_from_hash(location.hash);
-  if (shared_board === null) {
+  clear_address_hash();
+  if (shared_board === null || !has_room_for_cheese(shared_board)) {
     return false;
   }
-  custom_board = shared_board;
-  clear_address_hash();
+  fixed_board = shared_board;
   return true;
 }
 
@@ -1968,51 +1992,22 @@ function check_room_to_play() {
   return false;
 }
 
-function start_build_trial() {
-  if (!check_room_to_play()) {
-    return;
-  }
-  trial_on_build = true;
-  select_game_mode("time_trial");
-}
-
 function start_playing_build() {
   if (!check_room_to_play()) {
     return;
   }
-  build_phase = "play";
-  cheese = pick_build_cheese(custom_board, null, Math.random);
-  settle_into_build_phase();
+  paint_stroke = null;
+  hover_spot = null;
+  fixed_board = custom_board;
+  select_game_mode("puzzle");
 }
 
-function back_to_building() {
+function start_trial_on_this_map() {
   if (mode === "executing") {
     return;
   }
-  if (trial_on_build) {
-    trial_on_build = false;
-    select_game_mode("build");
-    return;
-  }
-  build_phase = "edit";
-  cheese = null;
-  settle_into_build_phase();
-}
-
-function settle_into_build_phase() {
-  celebration = null;
-  paint_stroke = null;
-  hover_spot = null;
-  mouse = copy_mouse(start_mouse);
-  set_message("");
-  set_selection(null);
-  set_levels_completed(0);
-  update_build_ui();
-  refresh_buttons();
-}
-
-function advance_custom_level() {
-  cheese = pick_build_cheese(custom_board, cheese, Math.random);
+  fixed_board = board;
+  select_game_mode("time_trial");
 }
 
 function draw_with_target(target_ctx, target_board, size, draw) {
@@ -2259,15 +2254,11 @@ document.getElementById("btn-play").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
   start_playing_build();
 });
-document.getElementById("btn-trial").addEventListener("click", function (event) {
-  flash_button(event.currentTarget);
-  start_build_trial();
-});
 document.getElementById("btn-share").addEventListener("click", function (event) {
   flash_button(event.currentTarget);
   share_build();
 });
-document.getElementById("btn-edit").addEventListener("click", back_to_building);
+document.getElementById("btn-trial").addEventListener("click", start_trial_on_this_map);
 
 document.getElementById("mode-chip").addEventListener("click", function () {
   set_mode_list_open(!is_mode_list_open());
@@ -2280,7 +2271,7 @@ for (var mode_index = 0; mode_index < mode_options.length; mode_index++) {
     if (mode === "executing") {
       return;
     }
-    trial_on_build = false;
+    fixed_board = null;
     select_game_mode(event.currentTarget.dataset.mode);
   });
 }
@@ -2312,6 +2303,13 @@ for (var speed_index = 0; speed_index < speed_options.length; speed_index++) {
   });
 }
 
+var goal_options = document.querySelectorAll(".goal-option");
+for (var goal_index = 0; goal_index < goal_options.length; goal_index++) {
+  goal_options[goal_index].addEventListener("click", function (event) {
+    pick_trial_goal(Number(event.currentTarget.dataset.goal));
+  });
+}
+
 document.addEventListener("click", function (event) {
   var clicked_inside_mode_menu = event.target.closest(".mode-menu");
   if (!clicked_inside_mode_menu) {
@@ -2330,11 +2328,21 @@ document.addEventListener("keydown", function (event) {
   }
 });
 
+window.addEventListener("hashchange", function () {
+  if (!load_shared_build()) {
+    return;
+  }
+  set_mode_list_open(false);
+  set_settings_panel_open(false);
+  reset_program();
+  select_game_mode("puzzle");
+});
+
 apply_settings();
 draw_all_tool_icons();
 rebuild_routine_row();
 if (load_shared_build()) {
-  select_game_mode("build");
+  select_game_mode("puzzle");
 } else {
   select_game_mode("tutorial");
 }
