@@ -166,6 +166,48 @@ function push_direction(board, mouse) {
   return here.direction;
 }
 
+function spot_key(row, col) {
+  return row + "," + col;
+}
+
+function stairs_tops(board) {
+  var mice = [];
+  for (var row = 0; row < board.rows; row++) {
+    for (var col = 0; col < board.cols; col++) {
+      if (cell_at(board, row, col).type === "stairs") {
+        mice.push({ row: row, col: col, direction: 0, level: 1 });
+      }
+    }
+  }
+  return mice;
+}
+
+function walkable_tops(board) {
+  var queue = stairs_tops(board);
+  var seen = {};
+  queue.forEach(function (mouse) {
+    seen[spot_key(mouse.row, mouse.col)] = true;
+  });
+  var next_index = 0;
+  while (next_index < queue.length) {
+    var mouse = queue[next_index];
+    next_index += 1;
+    for (var direction = 0; direction < 4; direction++) {
+      var moved = try_move(mouse, board, direction);
+      var key = spot_key(moved.row, moved.col);
+      if (moved.level === 1 && !seen[key]) {
+        seen[key] = true;
+        queue.push(moved);
+      }
+    }
+  }
+  return seen;
+}
+
+function has_walkable_top(tops, row, col) {
+  return tops[spot_key(row, col)] === true;
+}
+
 var CELLS_BY_SYMBOL = {
   ".": FLOOR,
   S: FLOOR,
@@ -222,6 +264,8 @@ if (typeof module !== "undefined") {
     is_raised,
     try_move,
     push_direction,
+    walkable_tops,
+    has_walkable_top,
     parse_board,
   };
 }

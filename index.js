@@ -1202,13 +1202,23 @@ function tunnel_boxes(row, col, axis) {
   });
 }
 
-function has_open_mouth(row, col, direction, axis) {
+function has_exit(row, col, direction, axis) {
   if (!is_tunnel_mouth(row, col, direction, axis)) {
     return false;
   }
   var inside = create_mouse(row, col, direction, 0);
   var stepped_out = try_move(inside, board, direction);
   return !same_pose(stepped_out, inside);
+}
+
+function leads_under_bridge(row, col, direction) {
+  var delta = DIRECTIONS[direction];
+  var neighbor = cell_at(board, row + delta.row_delta, col + delta.col_delta);
+  return neighbor !== null && neighbor.type === "bridge";
+}
+
+function has_open_mouth(row, col, direction, axis) {
+  return has_exit(row, col, direction, axis) && !leads_under_bridge(row, col, direction);
 }
 
 function fill_box(box) {
@@ -1221,20 +1231,39 @@ function clip_to_box(box) {
   ctx.clip();
 }
 
-function draw_tunnel_mouth(center_x, center_y, radius_x, radius_y, start_angle) {
+function make_mouth(direction, center_x, center_y, radius_x, radius_y, start_angle) {
+  return {
+    direction: direction,
+    center_x: center_x,
+    center_y: center_y,
+    radius_x: radius_x,
+    radius_y: radius_y,
+    start_angle: start_angle,
+  };
+}
+
+function trace_mouth(mouth, grow) {
+  var radius_x = mouth.radius_x + grow;
+  var radius_y = mouth.radius_y + grow;
+  var start_x = mouth.center_x + radius_x * Math.cos(mouth.start_angle);
+  var start_y = mouth.center_y + radius_y * Math.sin(mouth.start_angle);
+  var end_angle = mouth.start_angle + Math.PI;
+  ctx.moveTo(start_x, start_y);
+  ctx.ellipse(mouth.center_x, mouth.center_y, radius_x, radius_y, 0, mouth.start_angle, end_angle);
+  ctx.closePath();
+}
+
+function draw_tunnel_mouth(mouth) {
   var rim = cell_size * 0.06;
-  var end_angle = start_angle + Math.PI;
 
   ctx.fillStyle = TUNNEL_RIM;
   ctx.beginPath();
-  ctx.ellipse(center_x, center_y, radius_x + rim, radius_y + rim, 0, start_angle, end_angle);
-  ctx.closePath();
+  trace_mouth(mouth, rim);
   ctx.fill();
 
   ctx.fillStyle = TUNNEL_HOLE;
   ctx.beginPath();
-  ctx.ellipse(center_x, center_y, radius_x, radius_y, 0, start_angle, end_angle);
-  ctx.closePath();
+  trace_mouth(mouth, 0);
   ctx.fill();
 }
 
@@ -1254,16 +1283,23 @@ function draw_horizontal_tunnel(row, col, boxes) {
     ctx.fillRect(hoop_x, face.top, hoop_width, face_height);
   });
   ctx.restore();
+}
 
+function horizontal_mouths(row, col, boxes) {
+  var face = boxes.face;
+  var outer = boxes.outer;
+  var face_height = face.bottom - face.top;
   var center_y = face.top + face_height / 2;
   var radius_x = cell_size * 0.14;
   var radius_y = face_height * 0.36;
-  if (has_open_mouth(row, col, 3, "horizontal")) {
-    draw_tunnel_mouth(outer.left, center_y, radius_x, radius_y, -Math.PI / 2);
+  var mouths = [];
+  if (has_exit(row, col, 3, "horizontal")) {
+    mouths.push(make_mouth(3, outer.left, center_y, radius_x, radius_y, -Math.PI / 2));
   }
-  if (has_open_mouth(row, col, 1, "horizontal")) {
-    draw_tunnel_mouth(outer.right, center_y, radius_x, radius_y, Math.PI / 2);
+  if (has_exit(row, col, 1, "horizontal")) {
+    mouths.push(make_mouth(1, outer.right, center_y, radius_x, radius_y, Math.PI / 2));
   }
+  return mouths;
 }
 
 function draw_vertical_tunnel(row, col, boxes) {
@@ -1282,15 +1318,22 @@ function draw_vertical_tunnel(row, col, boxes) {
     ctx.fillRect(face.left, hoop_y, face_width, hoop_height);
   });
   ctx.restore();
+}
 
+function vertical_mouths(row, col, boxes) {
+  var face = boxes.face;
+  var outer = boxes.outer;
+  var face_width = face.right - face.left;
   var center_x = cell_center_x(col);
   var radius_x = face_width * 0.34;
-  if (has_open_mouth(row, col, 0, "vertical")) {
-    draw_tunnel_mouth(center_x, outer.top, radius_x, cell_size * 0.12, 0);
+  var mouths = [];
+  if (has_exit(row, col, 0, "vertical")) {
+    mouths.push(make_mouth(0, center_x, outer.top, radius_x, cell_size * 0.12, 0));
   }
-  if (has_open_mouth(row, col, 2, "vertical")) {
-    draw_tunnel_mouth(center_x, outer.bottom, radius_x, cell_size * 0.26, Math.PI);
+  if (has_exit(row, col, 2, "vertical")) {
+    mouths.push(make_mouth(2, center_x, outer.bottom, radius_x, cell_size * 0.26, Math.PI));
   }
+  return mouths;
 }
 
 function draw_tunnel(row, col, axis) {
@@ -1304,6 +1347,61 @@ function draw_tunnel(row, col, axis) {
   } else {
     draw_vertical_tunnel(row, col, boxes);
   }
+  draw_tunnel_mouths(row, col, axis, boxes);
+}
+
+function tunnel_mouths(row, col, axis, boxes) {
+  if (axis === "horizontal") {
+    return horizontal_mouths(row, col, boxes);
+  }
+  return vertical_mouths(row, col, boxes);
+}
+
+function visible_tunnel_mouths(row, col, axis, boxes) {
+  return tunnel_mouths(row, col, axis, boxes).filter(function (mouth) {
+    return !leads_under_bridge(row, col, mouth.direction);
+  });
+}
+
+function draw_tunnel_mouths(row, col, axis, boxes) {
+  visible_tunnel_mouths(row, col, axis, boxes).forEach(draw_tunnel_mouth);
+}
+
+function neighbor_spot_toward(spot, direction) {
+  var delta = DIRECTIONS[direction];
+  return { row: spot.row + delta.row_delta, col: spot.col + delta.col_delta };
+}
+
+function spots_around(spot) {
+  var spots = [spot];
+  ALL_DIRECTIONS.forEach(function (direction) {
+    spots.push(neighbor_spot_toward(spot, direction));
+  });
+  return spots;
+}
+
+function draw_mouths_under_bridges_near(covered_cell) {
+  if (covered_cell === null) {
+    return;
+  }
+  spots_around(covered_cell).forEach(function (spot) {
+    var cell = cell_at(board, spot.row, spot.col);
+    if (cell === null || cell.type !== "tunnel") {
+      return;
+    }
+    var tunnel_is_covered = is_same_spot(spot, covered_cell);
+    var boxes = tunnel_boxes(spot.row, spot.col, cell.axis);
+    tunnel_mouths(spot.row, spot.col, cell.axis, boxes).forEach(function (mouth) {
+      var bridge_spot = neighbor_spot_toward(spot, mouth.direction);
+      var bridge_is_covered = is_same_spot(bridge_spot, covered_cell);
+      var shows = leads_under_bridge(spot.row, spot.col, mouth.direction) && (tunnel_is_covered || bridge_is_covered);
+      if (shows) {
+        ctx.globalAlpha = tunnel_is_covered ? 0.4 : 1;
+        draw_tunnel_mouth(mouth);
+      }
+    });
+  });
+  ctx.globalAlpha = 1;
 }
 
 var WALL_EDGE = "#5d4037";
@@ -1365,16 +1463,169 @@ function draw_bridge_rails(face, axis) {
   }
 }
 
-function draw_bridge(row, col) {
-  var joins = raised_neighbor_test(row, col);
-  var axis = bridge_span_axis(joins);
-  var boxes = block_boxes(row, col, DIRECTIONS_ALONG[axis], joins);
+function draw_bridge_deck(row, col, boxes, axis) {
   ctx.fillStyle = BRIDGE_BEAM;
   fill_box(boxes.outer);
   ctx.fillStyle = BRIDGE_DECK;
   fill_box(boxes.face);
   draw_bridge_planks(row, col, boxes.face, axis);
   draw_bridge_rails(boxes.face, axis);
+}
+
+function bridge_deck_boxes(row, col) {
+  var joins = raised_neighbor_test(row, col);
+  var axis = bridge_span_axis(joins);
+  var boxes = block_boxes(row, col, DIRECTIONS_ALONG[axis], joins);
+  return { boxes: boxes, axis: axis };
+}
+
+function draw_bridge(row, col) {
+  var deck = bridge_deck_boxes(row, col);
+  draw_bridge_deck(row, col, deck.boxes, deck.axis);
+}
+
+function draw_buried_tunnel_outline(boxes, axis) {
+  var face = boxes.face;
+  var inset = cell_size * 0.16;
+  ctx.save();
+  ctx.strokeStyle = TUNNEL_BODY;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  if (axis === "horizontal") {
+    ctx.moveTo(face.left, face.top + inset);
+    ctx.lineTo(face.right, face.top + inset);
+    ctx.moveTo(face.left, face.bottom - inset);
+    ctx.lineTo(face.right, face.bottom - inset);
+  } else {
+    ctx.moveTo(face.left + inset, face.top);
+    ctx.lineTo(face.left + inset, face.bottom);
+    ctx.moveTo(face.right - inset, face.top);
+    ctx.lineTo(face.right - inset, face.bottom);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw_tunnel_top(row, col, axis) {
+  var joins = raised_neighbor_test(row, col);
+  var deck_axis = bridge_span_axis(joins);
+  var deck_boxes = block_boxes(row, col, ALL_DIRECTIONS, joins);
+  draw_bridge_deck(row, col, deck_boxes, deck_axis);
+  draw_buried_tunnel_outline(tunnel_boxes(row, col, axis), axis);
+}
+
+var TUNNEL_OVERHANG = 0.28;
+
+function extend_box(box, direction, amount) {
+  var extended = { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+  if (direction === 0) {
+    extended.top -= amount;
+  } else if (direction === 1) {
+    extended.right += amount;
+  } else if (direction === 2) {
+    extended.bottom += amount;
+  } else {
+    extended.left -= amount;
+  }
+  return extended;
+}
+
+function overhang_directions(row, col, axis) {
+  return DIRECTIONS_ALONG[axis].filter(function (direction) {
+    return has_open_mouth(row, col, direction, axis);
+  });
+}
+
+function overhang_stub(box, row, col, direction) {
+  var stub = { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+  if (direction === 0) {
+    stub.bottom = cell_y(row);
+  } else if (direction === 1) {
+    stub.left = cell_x(col) + cell_size;
+  } else if (direction === 2) {
+    stub.top = cell_y(row) + cell_size;
+  } else {
+    stub.right = cell_x(col);
+  }
+  return stub;
+}
+
+function overhanging_tunnel(row, col, axis) {
+  var boxes = tunnel_boxes(row, col, axis);
+  var amount = cell_size * TUNNEL_OVERHANG;
+  var directions = overhang_directions(row, col, axis);
+  directions.forEach(function (direction) {
+    boxes = { outer: extend_box(boxes.outer, direction, amount), face: extend_box(boxes.face, direction, amount) };
+  });
+  var stubs = directions.map(function (direction) {
+    return overhang_stub(boxes.outer, row, col, direction);
+  });
+  var mouths = visible_tunnel_mouths(row, col, axis, boxes);
+  return { boxes: boxes, stubs: stubs, mouths: mouths };
+}
+
+function trace_boxes(boxes) {
+  boxes.forEach(function (box) {
+    ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+  });
+}
+
+function draw_tunnel_overhang(row, col, axis) {
+  var tunnel = overhanging_tunnel(row, col, axis);
+  ctx.save();
+  ctx.beginPath();
+  trace_boxes(tunnel.stubs);
+  ctx.clip();
+  ctx.fillStyle = TUNNEL_FRONT;
+  fill_box(tunnel.boxes.outer);
+  ctx.fillStyle = TUNNEL_BODY;
+  fill_box(tunnel.boxes.face);
+  ctx.restore();
+  tunnel.mouths.forEach(draw_tunnel_mouth);
+}
+
+function draw_tunnel_overhangs(tops, covered_cell) {
+  for (var row = 0; row < board.rows; row++) {
+    for (var col = 0; col < board.cols; col++) {
+      var cell = cell_at(board, row, col);
+      var is_overhung = cell.type === "tunnel" && has_walkable_top(tops, row, col);
+      if (is_overhung) {
+        var is_covered = covered_cell !== null && covered_cell.row === row && covered_cell.col === col;
+        ctx.globalAlpha = is_covered ? 0.4 : 1;
+        draw_tunnel_overhang(row, col, cell.axis);
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function all_overhang_mouths(tops) {
+  var mouths = [];
+  for (var row = 0; row < board.rows; row++) {
+    for (var col = 0; col < board.cols; col++) {
+      var cell = cell_at(board, row, col);
+      if (cell.type === "tunnel" && has_walkable_top(tops, row, col)) {
+        mouths = mouths.concat(overhanging_tunnel(row, col, cell.axis).mouths);
+      }
+    }
+  }
+  return mouths;
+}
+
+function draw_mouse_in_overhang_holes(pose, options, tops) {
+  var mouths = all_overhang_mouths(tops);
+  if (mouths.length === 0) {
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  mouths.forEach(function (mouth) {
+    trace_mouth(mouth, 0);
+  });
+  ctx.clip();
+  draw_mouse(pose, options);
+  ctx.restore();
 }
 
 var STAIR_STEP_COLORS = ["#a99087", "#9b7f75", WALL_FACE];
@@ -1398,7 +1649,7 @@ function draw_stairs(row, col, direction) {
   ctx.restore();
 }
 
-function draw_terrain_tops(covered_cell) {
+function draw_terrain_tops(covered_cell, tops) {
   for (var row = 0; row < board.rows; row++) {
     for (var col = 0; col < board.cols; col++) {
       var cell = cell_at(board, row, col);
@@ -1411,6 +1662,9 @@ function draw_terrain_tops(covered_cell) {
         draw_block(row, col, WALL_FACE);
       } else if (cell.type === "tunnel") {
         draw_tunnel(row, col, cell.axis);
+        if (has_walkable_top(tops, row, col)) {
+          draw_tunnel_top(row, col, cell.axis);
+        }
       } else if (cell.type === "bridge") {
         draw_bridge(row, col);
       } else if (cell.type === "stairs") {
@@ -1419,6 +1673,8 @@ function draw_terrain_tops(covered_cell) {
     }
   }
   ctx.globalAlpha = 1;
+  draw_tunnel_overhangs(tops, covered_cell);
+  draw_mouths_under_bridges_near(covered_cell);
 }
 
 function covered_cell_for(pose) {
@@ -1705,10 +1961,14 @@ function render() {
     draw_options.idle_pulse = Math.sin(idle_t * 1.3) * 0.015;
   }
   draw_options.lifted = pose.level === 1;
+  var tops = walkable_tops(board);
   if (!draw_options.lifted) {
     draw_mouse(pose, draw_options);
   }
-  draw_terrain_tops(covered_cell_for(pose));
+  draw_terrain_tops(covered_cell_for(pose), tops);
+  if (!draw_options.lifted) {
+    draw_mouse_in_overhang_holes(pose, draw_options, tops);
+  }
   if (cheese_on_wall) {
     draw_cheese(cheese);
   }
@@ -2053,7 +2313,7 @@ function draw_tool_icon(tool) {
   draw_with_target(icon_ctx, icon_board, tool_icon_size, function () {
     draw_floor();
     draw_treadmills();
-    draw_terrain_tops(null);
+    draw_terrain_tops(null, walkable_tops(board));
   });
 }
 

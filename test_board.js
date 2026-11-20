@@ -1,6 +1,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { parse_board, cell_at } = require("./board.js");
+const { parse_board, cell_at, walkable_tops, has_walkable_top } = require("./board.js");
 const { create_mouse, apply_step, plan_run, create_program, add_step } = require("./mouse.js");
 
 const forward = { type: "forward" };
@@ -224,5 +224,37 @@ describe("parse_board", () => {
     assert.strictEqual(cell_at(parsed.board, 1, 2).direction, 1);
     assert.strictEqual(cell_at(parsed.board, 2, 0).type, "bridge");
     assert.strictEqual(cell_at(parsed.board, 2, 1).direction, 3);
+  });
+});
+
+describe("walkable_tops", () => {
+  it("reaches a tunnel top by climbing stairs onto a wall", () => {
+    const tops = walkable_tops(board_from(["....", "R#H#", "...."]));
+    assert.strictEqual(has_walkable_top(tops, 1, 2), true);
+    assert.strictEqual(has_walkable_top(tops, 1, 3), true);
+  });
+
+  it("follows bridges and tunnel tops in a chain", () => {
+    const tops = walkable_tops(board_from(["R+..", ".H..", ".H.."]));
+    assert.strictEqual(has_walkable_top(tops, 1, 1), true);
+    assert.strictEqual(has_walkable_top(tops, 2, 1), true);
+  });
+
+  it("leaves out tunnels no stairs can reach", () => {
+    const tops = walkable_tops(board_from(["R#..", "....", "..=="]));
+    assert.strictEqual(has_walkable_top(tops, 2, 2), false);
+    assert.strictEqual(has_walkable_top(tops, 2, 3), false);
+  });
+
+  it("finds nothing on a board without stairs", () => {
+    const tops = walkable_tops(board_from(["#H#", "..."]));
+    assert.strictEqual(has_walkable_top(tops, 0, 1), false);
+  });
+
+  it("does not climb from the low end of the stairs", () => {
+    const tops = walkable_tops(board_from(["#L.", "..."]));
+    assert.strictEqual(has_walkable_top(tops, 0, 0), true);
+    const backwards = walkable_tops(board_from(["#R.", "..."]));
+    assert.strictEqual(has_walkable_top(backwards, 0, 0), false);
   });
 });
