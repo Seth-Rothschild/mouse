@@ -1,7 +1,5 @@
 var board_api = typeof require !== "undefined" ? require("./board.js") : window;
-var { try_move, can_turn_at, push_direction } = board_api;
-
-var MAX_PUSHES_PER_STEP = 6;
+var { try_move, push_direction } = board_api;
 
 function create_mouse(row, col, direction, level) {
   return { row: row, col: col, direction: direction, level: level || 0 };
@@ -37,13 +35,6 @@ function step_backward(mouse, board) {
   return try_move(mouse, board, opposite_direction);
 }
 
-function turn_if_allowed(mouse, board, turn) {
-  if (!can_turn_at(board, mouse)) {
-    return copy_mouse(mouse);
-  }
-  return turn(mouse);
-}
-
 function push_mouse(mouse, board) {
   var direction = push_direction(board, mouse);
   if (direction === null) {
@@ -60,10 +51,10 @@ function apply_step(mouse, step, board) {
     return step_backward(mouse, board);
   }
   if (step.type === "turn_right") {
-    return turn_if_allowed(mouse, board, turn_right);
+    return turn_right(mouse);
   }
   if (step.type === "turn_left") {
-    return turn_if_allowed(mouse, board, turn_left);
+    return turn_left(mouse);
   }
   if (step.type === "push") {
     return push_mouse(mouse, board);
@@ -79,15 +70,24 @@ function apply_with_pushes(mouse, step, board) {
   }
 
   var push_step = { type: "push", slot_index: step.slot_index };
-  for (var push_count = 0; push_count < MAX_PUSHES_PER_STEP; push_count++) {
+  var visited = [current];
+  while (true) {
     var pushed = apply_step(current, push_step, board);
-    if (same_pose(pushed, current)) {
+    var blocked = same_pose(pushed, current);
+    if (blocked || was_visited(visited, pushed)) {
       break;
     }
     beats.push(push_step);
     current = pushed;
+    visited.push(pushed);
   }
   return { beats: beats, mouse: current };
+}
+
+function was_visited(visited, mouse) {
+  return visited.some(function (earlier) {
+    return earlier.row === mouse.row && earlier.col === mouse.col && earlier.level === mouse.level;
+  });
 }
 
 function create_program() {

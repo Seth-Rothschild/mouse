@@ -11,12 +11,14 @@ function make_tunnel(axis) {
   return { type: "tunnel", axis: axis };
 }
 
-function make_bridge(axis) {
-  return { type: "bridge", axis: axis };
-}
+var BRIDGE = { type: "bridge" };
 
 function make_treadmill(direction) {
   return { type: "treadmill", direction: direction };
+}
+
+function make_stairs(direction) {
+  return { type: "stairs", direction: direction };
 }
 
 function create_board(rows, cols) {
@@ -65,48 +67,66 @@ function crossing_axis(axis) {
   return "vertical";
 }
 
-function axis_open_on_bridge(bridge, level) {
-  if (level === 1) {
-    return bridge.axis;
-  }
-  return crossing_axis(bridge.axis);
+var RAISED_TYPES = ["wall", "tunnel", "bridge"];
+
+function is_raised(cell) {
+  return RAISED_TYPES.indexOf(cell.type) !== -1;
 }
 
-function level_after_entering(here, target, move_axis, level) {
-  if (level === 0) {
-    if (target.type === "wall") {
-      return null;
-    }
-    if (target.type === "tunnel" && move_axis !== target.axis) {
-      return null;
-    }
-    if (target.type === "bridge" && move_axis === target.axis) {
-      return 1;
-    }
-    return 0;
-  }
+function opposite_direction(direction) {
+  return (direction + 2) % 4;
+}
 
-  if (target.type === "wall" || target.type === "tunnel") {
+function exit_level(here, move_direction, level) {
+  if (here.type !== "stairs") {
+    return level;
+  }
+  if (move_direction === here.direction) {
     return 1;
   }
-  if (target.type === "bridge") {
-    if (move_axis === target.axis) {
-      return 1;
-    }
-    return null;
+  return 0;
+}
+
+function level_after_entering_stairs(stairs, move_direction, level) {
+  var climbing = move_direction === stairs.direction;
+  var descending = move_direction === opposite_direction(stairs.direction);
+  if (climbing && level === 0) {
+    return 1;
   }
-  if (here.type === "bridge") {
-    return 0;
+  if (descending && level === 1) {
+    return 1;
   }
   return null;
 }
 
-function can_leave(here, move_axis, level) {
-  if (here.type === "bridge") {
-    return move_axis === axis_open_on_bridge(here, level);
+function level_after_entering(target, move_direction, level) {
+  var move_axis = axis_of_direction(move_direction);
+  if (target.type === "stairs") {
+    return level_after_entering_stairs(target, move_direction, level);
   }
+
+  if (level === 1) {
+    if (is_raised(target)) {
+      return 1;
+    }
+    return null;
+  }
+
+  if (target.type === "wall") {
+    return null;
+  }
+  if (target.type === "tunnel" && move_axis !== target.axis) {
+    return null;
+  }
+  return 0;
+}
+
+function can_leave(here, move_axis, level) {
   if (here.type === "tunnel" && level === 0) {
     return move_axis === here.axis;
+  }
+  if (here.type === "stairs") {
+    return move_axis === axis_of_direction(here.direction);
   }
   return true;
 }
@@ -127,16 +147,12 @@ function try_move(mouse, board, move_direction) {
     return unmoved;
   }
 
-  var level = level_after_entering(here, target, move_axis, mouse.level);
+  var level_at_edge = exit_level(here, move_direction, mouse.level);
+  var level = level_after_entering(target, move_direction, level_at_edge);
   if (level === null) {
     return unmoved;
   }
   return { row: row, col: col, direction: mouse.direction, level: level };
-}
-
-function can_turn_at(board, mouse) {
-  var here = cell_at(board, mouse.row, mouse.col);
-  return here.type !== "bridge";
 }
 
 function push_direction(board, mouse) {
@@ -157,12 +173,15 @@ var CELLS_BY_SYMBOL = {
   "#": WALL,
   "=": make_tunnel("horizontal"),
   H: make_tunnel("vertical"),
-  "-": make_bridge("horizontal"),
-  "|": make_bridge("vertical"),
+  "+": BRIDGE,
   "^": make_treadmill(0),
   ">": make_treadmill(1),
   v: make_treadmill(2),
   "<": make_treadmill(3),
+  U: make_stairs(0),
+  R: make_stairs(1),
+  D: make_stairs(2),
+  L: make_stairs(3),
 };
 
 function parse_board(lines) {
@@ -189,15 +208,19 @@ if (typeof module !== "undefined") {
     DIRECTIONS,
     FLOOR,
     WALL,
+    BRIDGE,
     make_tunnel,
-    make_bridge,
     make_treadmill,
+    make_stairs,
+    opposite_direction,
+    axis_of_direction,
     create_board,
     is_inside,
     cell_at,
     set_cell,
+    crossing_axis,
+    is_raised,
     try_move,
-    can_turn_at,
     push_direction,
     parse_board,
   };

@@ -530,6 +530,174 @@
         .results-card .trial-heading {
             color: var(--win);
         }
+
+        .edit-chip {
+            padding: 6px 14px;
+            border: 3px solid var(--ink);
+            border-radius: 999px;
+            background: var(--forward);
+            color: #fff;
+            font-size: 17px;
+            font-weight: 700;
+            white-space: nowrap;
+            cursor: pointer;
+            box-shadow: 0 3px 0 var(--ink);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .edit-chip:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 var(--ink);
+        }
+        .edit-chip:disabled {
+            cursor: default;
+            opacity: 0.5;
+        }
+        .edit-chip[hidden] {
+            display: none;
+        }
+
+        body.building canvas {
+            touch-action: none;
+            cursor: pointer;
+        }
+        body.building .controls, body.building #routine-row {
+            display: none;
+        }
+        body:not(.building) .build-tools {
+            display: none;
+        }
+        .build-tools {
+            box-sizing: border-box;
+            width: 280px;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(3, auto);
+            gap: 8px;
+        }
+        .tool {
+            position: relative;
+            box-sizing: border-box;
+            width: 62px;
+            height: 70px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 0;
+            border: 3px solid transparent;
+            border-radius: var(--radius-small);
+            background: #fff;
+            color: var(--ink);
+            cursor: pointer;
+            box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
+            transition: transform 0.05s, box-shadow 0.05s;
+        }
+        .tool:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 rgba(0, 0, 0, 0.18);
+        }
+        .tool.active {
+            border-color: var(--ink);
+            background: #fff6c9;
+        }
+        .tool-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+        }
+        .tool .icon.tool-icon {
+            width: 30px;
+            height: 30px;
+            padding: 3px;
+            stroke-width: 2.5;
+        }
+        .tool-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .tool.turnable.active::after {
+            content: "↻";
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--ink);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 22px;
+            text-align: center;
+        }
+        .build-hint {
+            min-height: 2.6em;
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.3;
+            text-align: center;
+            color: var(--ink-soft);
+        }
+        .size-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .stepper {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 3px;
+            border-radius: 999px;
+            background: #fff;
+            box-shadow: 0 3px 0 rgba(0, 0, 0, 0.12);
+        }
+        .step-button {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: var(--page);
+            color: var(--ink);
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .step-button:active {
+            background: var(--panel-edge);
+        }
+        .step-button:disabled {
+            cursor: default;
+            opacity: 0.35;
+        }
+        .stepper-value {
+            min-width: 54px;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        #btn-play {
+            width: 202px;
+            height: 60px;
+            margin-top: 4px;
+            background: var(--go);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
         .results-stats {
             width: 100%;
             margin: 0 0 8px;
@@ -787,6 +955,25 @@
                 flex-wrap: wrap;
                 justify-content: center;
             }
+            .build-tools {
+                margin-top: 14px;
+            }
+            .edit-chip {
+                font-size: 15px;
+                padding: 4px 12px;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .edit-label {
+                display: none;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .title {
+                font-size: 20px;
+            }
         }
 
         @media (orientation: portrait) and (min-width: 700px) and (max-width: 1100px) {
@@ -812,7 +999,7 @@
                 grid-area: board;
                 justify-self: center;
             }
-            .controls {
+            .controls, .build-tools {
                 grid-area: controls;
             }
             #routine-row {
@@ -883,6 +1070,13 @@
                 align-self: start;
                 margin-top: var(--corner-spread);
             }
+            .build-tools {
+                grid-column: 2;
+                grid-row: 2 / 4;
+                align-self: start;
+                width: 236px;
+                margin-top: 0;
+            }
             #routine-row {
                 grid-area: routines;
                 align-self: start;
@@ -904,13 +1098,15 @@
             <symbol id="icon-squeak" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
             <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 4v5h5"/><path d="M4.5 9A8 8 0 1 1 4 13"/></symbol>
             <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
-            <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M3 6h4M11 6h10M3 12h10M17 12h4M3 18h2M9 18h12"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></symbol>
+            <symbol id="icon-erase" viewBox="0 0 24 24"><path d="M20 20H9L4 15a2 2 0 0 1 0-2.8L12.2 4a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L11.8 20"/><path d="M8.5 8.5l7 7"/></symbol>
+            <symbol id="icon-settings"viewBox="0 0 24 24"><path d="M3 6h4M11 6h10M3 12h10M17 12h4M3 18h2M9 18h12"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></symbol>
         </defs>
     </svg>
     <div class="main-area">
         <header class="top-bar">
             <h1 class="title">Pseudo Mouse</h1>
             <div class="top-bar-actions">
+                <button class="edit-chip" id="btn-edit" title="Back to building" hidden>✎<span class="edit-label"> Edit</span></button>
                 <div class="mode-menu">
                     <button class="mode-chip" id="mode-chip" aria-haspopup="true" aria-expanded="false">
                         <span id="mode-chip-label">Tutorial</span>
@@ -928,6 +1124,10 @@
                         <button class="mode-option" data-mode="time_trial">
                             <span class="mode-option-name">Time Trial</span>
                             <span class="mode-option-blurb">Find 10 cheeses in the fewest presses</span>
+                        </button>
+                        <button class="mode-option" data-mode="build">
+                            <span class="mode-option-name">Build</span>
+                            <span class="mode-option-blurb">Make your own level, then play it</span>
                         </button>
                     </div>
                 </div>
@@ -990,6 +1190,29 @@
             <button class="control corner" id="btn-reset" title="Clear the program"><svg class="icon"><use href="#icon-reset"/></svg><span class="control-label">RESET</span></button>
         </div>
         <div id="routine-row"></div>
+        <div class="build-tools">
+            <div class="tool-grid">
+                <button class="tool" data-tool="wall"><canvas class="tool-icon"></canvas><span class="tool-label">Wall</span></button>
+                <button class="tool turnable" data-tool="tunnel"><canvas class="tool-icon"></canvas><span class="tool-label">Tunnel</span></button>
+                <button class="tool turnable" data-tool="stairs"><canvas class="tool-icon"></canvas><span class="tool-label">Stairs</span></button>
+                <button class="tool" data-tool="bridge"><canvas class="tool-icon"></canvas><span class="tool-label">Bridge</span></button>
+                <button class="tool" data-tool="floor"><svg class="icon tool-icon"><use href="#icon-erase"/></svg><span class="tool-label">Erase</span></button>
+            </div>
+            <p class="build-hint" id="build-hint"></p>
+            <div class="size-row">
+                <div class="stepper">
+                    <button class="step-button" id="cols-down" title="Narrower">−</button>
+                    <span class="stepper-value" id="cols-value"></span>
+                    <button class="step-button" id="cols-up" title="Wider">+</button>
+                </div>
+                <div class="stepper">
+                    <button class="step-button" id="rows-down" title="Shorter">−</button>
+                    <span class="stepper-value" id="rows-value"></span>
+                    <button class="step-button" id="rows-up" title="Taller">+</button>
+                </div>
+            </div>
+            <button class="action-button" id="btn-play" title="Play your level">▶ PLAY</button>
+        </div>
     </div>
     <div class="sidebar">
         <div class="program-stats">
@@ -1023,6 +1246,7 @@
     <script src="mouse.js"></script>
     <script src="maze.js"></script>
     <script src="trial.js"></script>
+    <script src="builder.js"></script>
     <script src="index.js"></script>
 </body>
 </html>

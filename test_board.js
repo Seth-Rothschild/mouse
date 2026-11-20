@@ -74,67 +74,97 @@ describe("tunnels", () => {
   });
 });
 
-describe("bridges over tunnels", () => {
-  const board = board_from([".....", "-=-..", "....."]);
+describe("stairs", () => {
+  const board = board_from([".", "#", "U", "S"]);
 
-  it("let a mouse on the deck walk across the tunnel top", () => {
-    const on_deck = create_mouse(1, 0, 1, 1);
-    const result = run_all(board, on_deck, [forward, forward, forward]);
-    assert.deepStrictEqual(result.mouse, create_mouse(1, 3, 1, 0));
+  it("lift the mouse when climbed from the low end", () => {
+    const start = create_mouse(3, 0, 0);
+    assert.deepStrictEqual(apply_step(start, forward, board), create_mouse(2, 0, 0, 1));
+  });
+
+  it("lead from the top step onto a wall", () => {
+    const start = create_mouse(3, 0, 0);
+    const result = run_all(board, start, [forward, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(1, 0, 0, 1));
+  });
+
+  it("can be walked back down to the ground", () => {
+    const on_wall = create_mouse(1, 0, 2, 1);
+    const result = run_all(board, on_wall, [forward, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(3, 0, 2, 0));
+  });
+
+  it("can be backed up as well as walked up", () => {
+    const facing_down = create_mouse(3, 0, 2);
+    assert.deepStrictEqual(apply_step(facing_down, backward, board), create_mouse(2, 0, 2, 1));
+  });
+
+  it("cannot be climbed from the top end while on the ground", () => {
+    const above = board_from(["S", "U", "."]);
+    const start = create_mouse(0, 0, 0);
+    assert.deepStrictEqual(apply_step(start, backward, above), start);
+  });
+
+  it("cannot be entered or left from the side", () => {
+    const sideways = board_from(["S.", "U."]);
+    const beside = create_mouse(1, 1, 3);
+    assert.deepStrictEqual(apply_step(beside, forward, sideways), beside);
+    const on_stairs = create_mouse(1, 0, 1, 1);
+    assert.deepStrictEqual(apply_step(on_stairs, forward, sideways), on_stairs);
   });
 });
 
-describe("bridges", () => {
-  const board = board_from(["...", ".|.", "..."]);
+describe("the high level", () => {
+  const board = board_from(["#=+.", "U#..", "S..."]);
+  const up_the_stairs = [forward, forward];
 
-  it("lift the mouse onto the deck when entered along the bridge axis", () => {
-    const start = create_mouse(2, 1, 0);
-    assert.strictEqual(apply_step(start, forward, board).level, 1);
+  it("is reached only by stairs", () => {
+    const result = run_all(board, create_mouse(2, 0, 0), up_the_stairs);
+    assert.deepStrictEqual(result.mouse, create_mouse(0, 0, 0, 1));
   });
 
-  it("let the mouse pass underneath when entered across the bridge axis", () => {
-    const start = create_mouse(1, 0, 1);
-    const under = apply_step(start, forward, board);
-    assert.strictEqual(under.col, 1);
-    assert.strictEqual(under.level, 0);
+  it("lets the mouse walk between walls, tunnel tops and bridges in any direction", () => {
+    const on_wall = create_mouse(0, 0, 1, 1);
+    const result = run_all(board, on_wall, [forward, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(0, 2, 1, 1));
+    const down_onto_wall = run_all(board, create_mouse(0, 1, 2, 1), [forward]);
+    assert.deepStrictEqual(down_onto_wall.mouse, create_mouse(1, 1, 2, 1));
   });
 
-  it("refuse turns while on the bridge", () => {
-    const on_deck = create_mouse(1, 1, 0, 1);
-    assert.deepStrictEqual(apply_step(on_deck, turn_right, board), on_deck);
+  it("never lets the mouse step off onto the ground", () => {
+    const on_bridge = create_mouse(0, 2, 1, 1);
+    assert.deepStrictEqual(apply_step(on_bridge, forward, board), on_bridge);
+    const on_wall = create_mouse(1, 1, 1, 1);
+    assert.deepStrictEqual(apply_step(on_wall, forward, board), on_wall);
   });
 
-  it("refuse to leave the deck sideways", () => {
-    const on_deck = create_mouse(1, 1, 1, 1);
-    assert.deepStrictEqual(apply_step(on_deck, forward, board), on_deck);
-  });
-
-  it("send the mouse back to the ground when it walks off the end", () => {
-    const on_deck = create_mouse(1, 1, 0, 1);
-    const landed = apply_step(on_deck, forward, board);
-    assert.deepStrictEqual(landed, create_mouse(0, 1, 0, 0));
+  it("allows turning anywhere", () => {
+    const on_bridge = create_mouse(0, 2, 1, 1);
+    assert.strictEqual(apply_step(on_bridge, turn_right, board).direction, 2);
   });
 });
 
-describe("bridge hops over walls", () => {
-  const board = board_from(["...", ".|.", ".#.", ".|.", "..."]);
-
-  it("carry the mouse across a wall at level one", () => {
-    const start = create_mouse(4, 1, 0);
-    const result = run_all(board, start, [forward, forward, forward, forward, forward]);
-    assert.deepStrictEqual(result.mouse, create_mouse(0, 1, 0, 0));
+describe("the ground under raised tiles", () => {
+  it("is blocked by walls", () => {
+    const board = board_from(["S#."]);
+    const start = create_mouse(0, 0, 1);
+    assert.deepStrictEqual(apply_step(start, forward, board), start);
   });
 
-  it("do not let a ground mouse walk onto a wall directly", () => {
-    const beside = board_from(["...", "...", ".#."]);
-    const start = create_mouse(2, 0, 1);
-    assert.deepStrictEqual(apply_step(start, forward, beside), start);
+  it("is open through a tunnel only along its length", () => {
+    const board = board_from([".H.", "S=."]);
+    const along = run_all(board, create_mouse(1, 0, 1), [forward, forward]);
+    assert.deepStrictEqual(along.mouse, create_mouse(1, 2, 1, 0));
+    const across = create_mouse(0, 0, 1);
+    assert.deepStrictEqual(apply_step(across, forward, board), across);
   });
 
-  it("do not let a mouse step off a wall top onto the ground", () => {
-    const wide = board_from(["...", ".|.", ".#.", ".|.", "..."]);
-    const on_wall = create_mouse(2, 1, 1, 1);
-    assert.deepStrictEqual(apply_step(on_wall, forward, wide), on_wall);
+  it("is open under a bridge in every direction", () => {
+    const board = board_from([".+.", "S++"]);
+    const along = run_all(board, create_mouse(1, 0, 1), [forward, forward]);
+    assert.deepStrictEqual(along.mouse, create_mouse(1, 2, 1, 0));
+    const turn_under = run_all(board, create_mouse(1, 0, 1), [forward, { type: "turn_left" }, forward]);
+    assert.deepStrictEqual(turn_under.mouse, create_mouse(0, 1, 0, 0));
   });
 });
 
@@ -155,17 +185,36 @@ describe("treadmills", () => {
     assert.deepStrictEqual(result.mouse, start);
   });
 
-  it("give up on endless loops after a few pushes", () => {
+  it("carry the mouse along a belt of any length", () => {
+    const board = board_from(["S>>>>>>>>."]);
+    const result = run_all(board, create_mouse(0, 0, 1), [forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(0, 9, 1, 0));
+  });
+
+  it("push a mouse walking against the belt back where it came from", () => {
+    const board = board_from([".>S"]);
+    const result = run_all(board, create_mouse(0, 2, 3), [forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(0, 2, 3, 0));
+  });
+
+  it("stop before carrying the mouse round a loop again", () => {
     const board = board_from([">v", "^<"]);
-    const start = create_mouse(0, 0, 1);
-    const result = run_all(board, start, [forward]);
-    assert.ok(result.plan.steps.length <= 8);
+    const result = run_all(board, create_mouse(1, 0, 0), [{ type: "squeak" }, forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(1, 0, 0, 0));
+    const looping = run_all(board, create_mouse(0, 0, 1), [{ type: "turn_left" }]);
+    assert.deepStrictEqual(looping.mouse, create_mouse(1, 0, 0, 0));
+  });
+
+  it("stop on the second of two belts that face each other", () => {
+    const board = board_from(["S><."]);
+    const result = run_all(board, create_mouse(0, 0, 1), [forward]);
+    assert.deepStrictEqual(result.mouse, create_mouse(0, 2, 1, 0));
   });
 });
 
 describe("parse_board", () => {
   it("reads symbols into cells and finds the start and cheese", () => {
-    const parsed = parse_board(["S#C", "=|>"]);
+    const parsed = parse_board(["S#C", "=H>", "+L."]);
     assert.deepStrictEqual(parsed.start, { row: 0, col: 0 });
     assert.deepStrictEqual(parsed.cheese, { row: 0, col: 2 });
     assert.strictEqual(cell_at(parsed.board, 0, 1).type, "wall");
@@ -173,5 +222,7 @@ describe("parse_board", () => {
     assert.strictEqual(cell_at(parsed.board, 1, 0).axis, "horizontal");
     assert.strictEqual(cell_at(parsed.board, 1, 1).axis, "vertical");
     assert.strictEqual(cell_at(parsed.board, 1, 2).direction, 1);
+    assert.strictEqual(cell_at(parsed.board, 2, 0).type, "bridge");
+    assert.strictEqual(cell_at(parsed.board, 2, 1).direction, 3);
   });
 });

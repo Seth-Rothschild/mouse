@@ -59,7 +59,23 @@ var counted_steps = 0;
 
 var trial = create_trial();
 
-var mode_names = { tutorial: "Tutorial", puzzle: "Puzzle", maze: "Maze", time_trial: "Time Trial" };
+var custom_board = create_board(5, 7);
+var build_phase = "edit";
+var build_tool = "wall";
+var tool_orientations = { tunnel: "horizontal", stairs: 0 };
+var paint_stroke = null;
+var hover_spot = null;
+var tool_icon_size = 36;
+
+var tool_hints = {
+  wall: "Tap or drag to build walls. Tap a wall to knock it down.",
+  tunnel: "Tap or drag to dig tunnels. Tap a tunnel to turn it.",
+  stairs: "Put stairs beside a wall to climb it. Tap stairs to turn them.",
+  bridge: "Walk on top of bridges, or underneath them.",
+  floor: "Tap or drag to clear squares.",
+};
+
+var mode_names = { tutorial: "Tutorial", puzzle: "Puzzle", maze: "Maze", time_trial: "Time Trial", build: "Build" };
 
 var actions = {
   forward: { type: "forward", color: "#3498db", ink: "#fff" },
@@ -97,6 +113,9 @@ function status_text() {
   }
   if (game_mode === "time_trial") {
     return trial.solved + " / " + TRIAL_GOAL + " solved";
+  }
+  if (game_mode === "build") {
+    return build_status_text();
   }
   return stars + " found";
 }
@@ -161,6 +180,13 @@ function setup_puzzle() {
   var puzzle = generate_maze(MAX_MAZE_ROWS, MAX_MAZE_COLS, start_mouse, Math.random);
   board = puzzle.board;
   cheese = puzzle.cheese;
+}
+
+function setup_build() {
+  board = custom_board;
+  start_mouse = build_start_mouse(custom_board);
+  cheese = null;
+  build_phase = "edit";
 }
 
 function update_mode_menu() {
@@ -253,6 +279,8 @@ function select_game_mode(new_mode) {
     setup_puzzle();
   } else if (game_mode === "maze") {
     setup_maze();
+  } else if (game_mode === "build") {
+    setup_build();
   } else {
     setup_tutorial();
   }
@@ -267,6 +295,7 @@ function select_game_mode(new_mode) {
   update_status();
   update_mode_menu();
   update_trial_overlays();
+  update_build_ui();
   rebuild_slots();
   refresh_buttons();
 }
@@ -295,6 +324,8 @@ function advance_to_next_level() {
     advance_puzzle();
   } else if (game_mode === "maze") {
     grow_current_maze();
+  } else if (game_mode === "build") {
+    advance_custom_level();
   } else {
     cheese = move_cheese(board, mouse, Math.random);
   }
@@ -407,7 +438,7 @@ function set_selection(new_selection) {
 }
 
 function tap_slot(slot_index) {
-  if (mode === "executing") {
+  if (mode === "executing" || is_building()) {
     return;
   }
   set_selection(selection_after_tap(selection, slot_index));
@@ -618,7 +649,7 @@ function buzz_on_press() {
 }
 
 function is_pressable(element) {
-  var pressable = element.closest(".control, .routine-button");
+  var pressable = element.closest(".control, .routine-button, .tool, .step-button");
   if (!pressable) {
     return false;
   }
@@ -925,11 +956,12 @@ function refresh_buttons() {
   document.getElementById("btn-go").disabled = trial_locked;
   document.getElementById("btn-reset").disabled = trial_locked;
   document.getElementById("mode-chip").disabled = executing;
+  document.getElementById("btn-edit").disabled = executing;
   if (executing) {
     set_mode_list_open(false);
   }
   var tray_actions = document.getElementById("tray-actions");
-  tray_actions.classList.toggle("hidden", executing || nothing_selected);
+  tray_actions.classList.toggle("hidden", executing || nothing_selected || is_building());
   document.getElementById("btn-save").disabled = routine_row_is_full;
 
   var routine_row_buttons = document.querySelectorAll("#routine-row button");
@@ -1077,7 +1109,7 @@ function draw_treadmills() {
 function draw_block(row, col, face_color) {
   var x = cell_x(col);
   var y = cell_y(row);
-  ctx.fillStyle = "#5d4037";
+  ctx.fillStyle = WALL_EDGE;
   ctx.fillRect(x + 1, y + 1, cell_size - 2, cell_size - 2);
   ctx.fillStyle = face_color;
   ctx.fillRect(x + 3, y + 3, cell_size - 6, cell_size - 9);
@@ -1101,31 +1133,48 @@ function is_tunnel_mouth(row, col, direction, axis) {
   return !continues;
 }
 
-function tunnel_boxes(row, col, axis) {
+var DIRECTIONS_ALONG = { horizontal: [1, 3], vertical: [0, 2] };
+var ALL_DIRECTIONS = [0, 1, 2, 3];
+
+function extend_box_to_edge(box, direction, row, col) {
+  if (direction === 0) {
+    box.top = cell_y(row);
+  } else if (direction === 1) {
+    box.right = cell_x(col) + cell_size;
+  } else if (direction === 2) {
+    box.bottom = cell_y(row) + cell_size;
+  } else {
+    box.left = cell_x(col);
+  }
+}
+
+function block_boxes(row, col, directions, continues_toward) {
   var x = cell_x(col);
   var y = cell_y(row);
   var outer = { left: x + 1, top: y + 1, right: x + cell_size - 1, bottom: y + cell_size - 1 };
   var face = { left: x + 3, top: y + 3, right: x + cell_size - 3, bottom: y + cell_size - 6 };
-  if (axis === "horizontal") {
-    if (!is_tunnel_mouth(row, col, 3, axis)) {
-      outer.left = x;
-      face.left = x;
+  directions.forEach(function (direction) {
+    if (continues_toward(direction)) {
+      extend_box_to_edge(outer, direction, row, col);
+      extend_box_to_edge(face, direction, row, col);
     }
-    if (!is_tunnel_mouth(row, col, 1, axis)) {
-      outer.right = x + cell_size;
-      face.right = x + cell_size;
-    }
-  } else {
-    if (!is_tunnel_mouth(row, col, 0, axis)) {
-      outer.top = y;
-      face.top = y;
-    }
-    if (!is_tunnel_mouth(row, col, 2, axis)) {
-      outer.bottom = y + cell_size;
-      face.bottom = y + cell_size;
-    }
-  }
+  });
   return { outer: outer, face: face };
+}
+
+function tunnel_boxes(row, col, axis) {
+  return block_boxes(row, col, DIRECTIONS_ALONG[axis], function (direction) {
+    return !is_tunnel_mouth(row, col, direction, axis);
+  });
+}
+
+function has_open_mouth(row, col, direction, axis) {
+  if (!is_tunnel_mouth(row, col, direction, axis)) {
+    return false;
+  }
+  var inside = create_mouse(row, col, direction, 0);
+  var stepped_out = try_move(inside, board, direction);
+  return !same_pose(stepped_out, inside);
 }
 
 function fill_box(box) {
@@ -1175,10 +1224,10 @@ function draw_horizontal_tunnel(row, col, boxes) {
   var center_y = face.top + face_height / 2;
   var radius_x = cell_size * 0.14;
   var radius_y = face_height * 0.36;
-  if (is_tunnel_mouth(row, col, 3, "horizontal")) {
+  if (has_open_mouth(row, col, 3, "horizontal")) {
     draw_tunnel_mouth(outer.left, center_y, radius_x, radius_y, -Math.PI / 2);
   }
-  if (is_tunnel_mouth(row, col, 1, "horizontal")) {
+  if (has_open_mouth(row, col, 1, "horizontal")) {
     draw_tunnel_mouth(outer.right, center_y, radius_x, radius_y, Math.PI / 2);
   }
 }
@@ -1202,10 +1251,10 @@ function draw_vertical_tunnel(row, col, boxes) {
 
   var center_x = cell_center_x(col);
   var radius_x = face_width * 0.34;
-  if (is_tunnel_mouth(row, col, 0, "vertical")) {
+  if (has_open_mouth(row, col, 0, "vertical")) {
     draw_tunnel_mouth(center_x, outer.top, radius_x, cell_size * 0.12, 0);
   }
-  if (is_tunnel_mouth(row, col, 2, "vertical")) {
+  if (has_open_mouth(row, col, 2, "vertical")) {
     draw_tunnel_mouth(center_x, outer.bottom, radius_x, cell_size * 0.26, Math.PI);
   }
 }
@@ -1223,26 +1272,95 @@ function draw_tunnel(row, col, axis) {
   }
 }
 
-function draw_bridge(row, col, axis) {
-  ctx.save();
-  ctx.translate(cell_center_x(col), cell_center_y(row));
-  if (axis === "horizontal") {
-    ctx.rotate(Math.PI / 2);
+var WALL_EDGE = "#5d4037";
+var WALL_FACE = "#8d6e63";
+var BRIDGE_BEAM = WALL_EDGE;
+var BRIDGE_DECK = WALL_FACE;
+var BRIDGE_SEAM = "#6d5047";
+var BRIDGE_PLANKS = 4;
+
+function raised_neighbor_test(row, col) {
+  var spot = { row: row, col: col };
+  return function (direction) {
+    return is_raised_toward(board, spot, direction);
+  };
+}
+
+function bridge_span_axis(joins) {
+  var sideways_joins = DIRECTIONS_ALONG.horizontal.filter(joins).length;
+  var upright_joins = DIRECTIONS_ALONG.vertical.filter(joins).length;
+  if (upright_joins > sideways_joins) {
+    return "vertical";
   }
-  var width = cell_size * 0.58;
-  ctx.fillStyle = "#7b4a1e";
-  ctx.fillRect(-width / 2 - 2, -cell_size / 2, width + 4, cell_size);
-  ctx.fillStyle = "#c68642";
-  ctx.fillRect(-width / 2 + 3, -cell_size / 2, width - 6, cell_size);
-  ctx.strokeStyle = "#7b4a1e";
+  return "horizontal";
+}
+
+function draw_bridge_planks(row, col, face, axis) {
+  ctx.save();
+  clip_to_box(face);
+  ctx.strokeStyle = BRIDGE_SEAM;
   ctx.lineWidth = 1.5;
-  for (var plank = 1; plank < 5; plank++) {
-    var plank_y = -cell_size / 2 + (plank * cell_size) / 5;
+  for (var seam = 0; seam < BRIDGE_PLANKS; seam++) {
+    var offset = (seam * cell_size) / BRIDGE_PLANKS;
     ctx.beginPath();
-    ctx.moveTo(-width / 2 + 3, plank_y);
-    ctx.lineTo(width / 2 - 3, plank_y);
+    if (axis === "horizontal") {
+      var seam_x = cell_x(col) + offset;
+      ctx.moveTo(seam_x, face.top);
+      ctx.lineTo(seam_x, face.bottom);
+    } else {
+      var seam_y = cell_y(row) + offset;
+      ctx.moveTo(face.left, seam_y);
+      ctx.lineTo(face.right, seam_y);
+    }
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function draw_bridge_rails(face, axis) {
+  var rail = Math.max(2, cell_size * 0.06);
+  var face_width = face.right - face.left;
+  var face_height = face.bottom - face.top;
+  ctx.fillStyle = BRIDGE_BEAM;
+  if (axis === "horizontal") {
+    ctx.fillRect(face.left, face.top, face_width, rail);
+    ctx.fillRect(face.left, face.bottom - rail, face_width, rail);
+  } else {
+    ctx.fillRect(face.left, face.top, rail, face_height);
+    ctx.fillRect(face.right - rail, face.top, rail, face_height);
+  }
+}
+
+function draw_bridge(row, col) {
+  var joins = raised_neighbor_test(row, col);
+  var axis = bridge_span_axis(joins);
+  var boxes = block_boxes(row, col, DIRECTIONS_ALONG[axis], joins);
+  ctx.fillStyle = BRIDGE_BEAM;
+  fill_box(boxes.outer);
+  ctx.fillStyle = BRIDGE_DECK;
+  fill_box(boxes.face);
+  draw_bridge_planks(row, col, boxes.face, axis);
+  draw_bridge_rails(boxes.face, axis);
+}
+
+var STAIR_STEP_COLORS = ["#a99087", "#9b7f75", WALL_FACE];
+
+function draw_stairs(row, col, direction) {
+  var half = cell_size / 2;
+  var side_inset = 3;
+  var riser = Math.max(3, cell_size * 0.07);
+  var step_depth = (cell_size - 2) / STAIR_STEP_COLORS.length;
+  ctx.save();
+  ctx.translate(cell_center_x(col), cell_center_y(row));
+  ctx.rotate((direction * Math.PI) / 2);
+  ctx.fillStyle = WALL_EDGE;
+  ctx.fillRect(-half + 1, -half + 1, cell_size - 2, cell_size - 2);
+  STAIR_STEP_COLORS.forEach(function (color, step) {
+    var step_bottom = half - 1 - step * step_depth;
+    var step_top = step_bottom - step_depth;
+    ctx.fillStyle = color;
+    ctx.fillRect(-half + side_inset, step_top + 2, cell_size - side_inset * 2, step_depth - riser - 2);
+  });
   ctx.restore();
 }
 
@@ -1256,11 +1374,13 @@ function draw_terrain_tops(covered_cell) {
         ctx.globalAlpha = 0.4;
       }
       if (cell.type === "wall") {
-        draw_block(row, col, "#8d6e63");
+        draw_block(row, col, WALL_FACE);
       } else if (cell.type === "tunnel") {
         draw_tunnel(row, col, cell.axis);
       } else if (cell.type === "bridge") {
-        draw_bridge(row, col, cell.axis);
+        draw_bridge(row, col);
+      } else if (cell.type === "stairs") {
+        draw_stairs(row, col, cell.direction);
       }
     }
   }
@@ -1280,9 +1400,9 @@ function covered_cell_for(pose) {
   return null;
 }
 
-function draw_cheese() {
-  var x = cell_center_x(cheese.col);
-  var y = cell_center_y(cheese.row);
+function draw_cheese(spot) {
+  var x = cell_center_x(spot.col);
+  var y = cell_center_y(spot.row);
   var pulse = 1 + Math.sin(performance.now() / 320) * 0.05;
   var radius = cell_size * 0.32 * pulse;
 
@@ -1524,7 +1644,9 @@ function render() {
 
   draw_floor();
   draw_treadmills();
-  draw_cheese();
+  if (cheese) {
+    draw_cheese(cheese);
+  }
   draw_trail();
 
   var pose = current_pose();
@@ -1554,6 +1676,9 @@ function render() {
   draw_terrain_tops(covered_cell_for(pose));
   if (draw_options.lifted) {
     draw_mouse(pose, draw_options);
+  }
+  if (is_building() && hover_spot && is_inside(board, hover_spot.row, hover_spot.col)) {
+    draw_hover_outline(hover_spot);
   }
 
   if (motion_intensity > 0.3 && ++trail_spawn_counter % 3 === 0) {
@@ -1745,6 +1870,324 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+function is_building() {
+  return game_mode === "build" && build_phase === "edit";
+}
+
+function build_status_text() {
+  if (build_phase === "play") {
+    return levels_completed + " found";
+  }
+  if (has_room_for_cheese(custom_board)) {
+    return "✓ Ready to play";
+  }
+  return "The mouse is boxed in";
+}
+
+function update_build_ui() {
+  var playing_build = game_mode === "build" && build_phase === "play";
+  document.body.classList.toggle("building", is_building());
+  document.getElementById("btn-edit").hidden = !playing_build;
+  if (game_mode === "build") {
+    update_tool_tiles();
+    update_size_controls();
+  }
+}
+
+function load_custom_board() {
+  board = custom_board;
+  start_mouse = build_start_mouse(custom_board);
+  mouse = copy_mouse(start_mouse);
+  layout_board();
+  update_status();
+  update_size_controls();
+}
+
+function start_playing_build() {
+  if (!has_room_for_cheese(custom_board)) {
+    set_message("The mouse needs room to move!", "try");
+    trigger_shake(6, 220);
+    play_thud_sound();
+    return;
+  }
+  build_phase = "play";
+  cheese = pick_build_cheese(custom_board, null, Math.random);
+  settle_into_build_phase();
+}
+
+function back_to_building() {
+  if (mode === "executing") {
+    return;
+  }
+  build_phase = "edit";
+  cheese = null;
+  settle_into_build_phase();
+}
+
+function settle_into_build_phase() {
+  celebration = null;
+  paint_stroke = null;
+  hover_spot = null;
+  mouse = copy_mouse(start_mouse);
+  set_message("");
+  set_selection(null);
+  set_levels_completed(0);
+  update_build_ui();
+  refresh_buttons();
+}
+
+function advance_custom_level() {
+  cheese = pick_build_cheese(custom_board, cheese, Math.random);
+}
+
+function draw_with_target(target_ctx, target_board, size, draw) {
+  var saved_ctx = ctx;
+  var saved_board = board;
+  var saved_cell_size = cell_size;
+  var saved_origin_x = board_origin_x;
+  var saved_origin_y = board_origin_y;
+  ctx = target_ctx;
+  board = target_board;
+  cell_size = size;
+  board_origin_x = 0;
+  board_origin_y = 0;
+  try {
+    draw();
+  } finally {
+    ctx = saved_ctx;
+    board = saved_board;
+    cell_size = saved_cell_size;
+    board_origin_x = saved_origin_x;
+    board_origin_y = saved_origin_y;
+  }
+}
+
+function tool_orientation(tool) {
+  if (tool in tool_orientations) {
+    return tool_orientations[tool];
+  }
+  return null;
+}
+
+function draw_tool_icon(tool) {
+  var icon_canvas = document.querySelector('.tool[data-tool="' + tool + '"] canvas');
+  if (!icon_canvas) {
+    return;
+  }
+  icon_canvas.width = tool_icon_size * pixel_ratio;
+  icon_canvas.height = tool_icon_size * pixel_ratio;
+  var icon_board = create_board(1, 1);
+  set_cell(icon_board, 0, 0, tool_cell(tool, tool_orientation(tool)));
+  var icon_ctx = icon_canvas.getContext("2d");
+  icon_ctx.setTransform(pixel_ratio, 0, 0, pixel_ratio, 0, 0);
+  draw_with_target(icon_ctx, icon_board, tool_icon_size, function () {
+    draw_floor();
+    draw_treadmills();
+    draw_terrain_tops(null);
+  });
+}
+
+function draw_all_tool_icons() {
+  var tools = document.querySelectorAll(".tool");
+  for (var i = 0; i < tools.length; i++) {
+    draw_tool_icon(tools[i].dataset.tool);
+  }
+}
+
+function update_tool_tiles() {
+  var tools = document.querySelectorAll(".tool");
+  for (var i = 0; i < tools.length; i++) {
+    tools[i].classList.toggle("active", tools[i].dataset.tool === build_tool);
+  }
+  set_text("build-hint", tool_hints[build_tool]);
+}
+
+function pick_tool(tool) {
+  var picked_again = tool === build_tool;
+  if (picked_again && is_turnable_tool(tool)) {
+    tool_orientations[tool] = next_orientation(tool, tool_orientations[tool]);
+    draw_tool_icon(tool);
+  }
+  build_tool = tool;
+  update_tool_tiles();
+}
+
+function update_size_controls() {
+  var rows = custom_board.rows;
+  var cols = custom_board.cols;
+  set_text("cols-value", cols + " wide");
+  set_text("rows-value", rows + " tall");
+  document.getElementById("cols-down").disabled = cols <= BUILD_MIN_SIZE;
+  document.getElementById("cols-up").disabled = cols >= BUILD_MAX_COLS;
+  document.getElementById("rows-down").disabled = rows <= BUILD_MIN_SIZE;
+  document.getElementById("rows-up").disabled = rows >= BUILD_MAX_ROWS;
+}
+
+function change_level_size(row_change, col_change) {
+  var rows = custom_board.rows + row_change;
+  var cols = custom_board.cols + col_change;
+  var rows_ok = rows >= BUILD_MIN_SIZE && rows <= BUILD_MAX_ROWS;
+  var cols_ok = cols >= BUILD_MIN_SIZE && cols <= BUILD_MAX_COLS;
+  if (!rows_ok || !cols_ok) {
+    return;
+  }
+  custom_board = resize_board(custom_board, rows, cols);
+  load_custom_board();
+}
+
+function spot_from_pointer(event) {
+  var rect = canvas.getBoundingClientRect();
+  var canvas_x = ((event.clientX - rect.left) * canvas_width) / rect.width;
+  var canvas_y = ((event.clientY - rect.top) * canvas_height) / rect.height;
+  var col = Math.floor((canvas_x - board_origin_x) / cell_size);
+  var row = Math.floor((canvas_y - board_origin_y) / cell_size);
+  if (!is_inside(board, row, col)) {
+    return null;
+  }
+  return { row: row, col: col };
+}
+
+function stroke_tool_for(found) {
+  var knocking_down_wall = found.tool === "wall" && build_tool === "wall";
+  if (knocking_down_wall) {
+    return "floor";
+  }
+  return build_tool;
+}
+
+function paint_spot(spot, tool) {
+  var changed = place_tool(custom_board, spot, tool, tool_orientation(tool));
+  if (!changed) {
+    return false;
+  }
+  load_custom_board();
+  if (tool === "floor") {
+    play_thud_sound();
+  } else {
+    play_click_sound();
+  }
+  return true;
+}
+
+function warn_about_lonely_stairs() {
+  set_message("Stairs go beside a wall!", "try");
+  play_thud_sound();
+}
+
+function turn_spot(spot) {
+  var found = tool_at(custom_board, spot);
+  var orientation = turn_at(custom_board, spot);
+  if (orientation === null) {
+    play_thud_sound();
+    return;
+  }
+  tool_orientations[found.tool] = orientation;
+  load_custom_board();
+  draw_tool_icon(found.tool);
+  play_click_sound();
+}
+
+function begin_stroke(spot) {
+  var found = tool_at(custom_board, spot);
+  if (found.tool === "mouse") {
+    trigger_squeak_effect();
+    return;
+  }
+  var tool = stroke_tool_for(found);
+  var tapped_turnable = found.tool === tool && is_turnable_tool(tool);
+  paint_stroke = { tool: tool, last_spot: spot, turn_on_release: tapped_turnable };
+  if (tapped_turnable) {
+    return;
+  }
+  var placed = paint_spot(spot, tool);
+  if (!placed && tool === "stairs") {
+    warn_about_lonely_stairs();
+  }
+}
+
+function continue_stroke(spot) {
+  if (is_same_spot(spot, paint_stroke.last_spot)) {
+    return;
+  }
+  paint_stroke.last_spot = spot;
+  paint_stroke.turn_on_release = false;
+  paint_spot(spot, paint_stroke.tool);
+}
+
+function finish_stroke() {
+  if (paint_stroke && paint_stroke.turn_on_release) {
+    turn_spot(paint_stroke.last_spot);
+  }
+  paint_stroke = null;
+}
+
+function draw_hover_outline(spot) {
+  ctx.strokeStyle = "rgba(45, 42, 50, 0.55)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(cell_x(spot.col) + 2, cell_y(spot.row) + 2, cell_size - 4, cell_size - 4);
+}
+
+canvas.addEventListener("pointerdown", function (event) {
+  if (!is_building()) {
+    return;
+  }
+  var spot = spot_from_pointer(event);
+  if (!spot) {
+    return;
+  }
+  event.preventDefault();
+  canvas.setPointerCapture(event.pointerId);
+  begin_stroke(spot);
+});
+
+canvas.addEventListener("pointermove", function (event) {
+  if (!is_building()) {
+    return;
+  }
+  var spot = spot_from_pointer(event);
+  if (event.pointerType === "mouse") {
+    hover_spot = spot;
+  }
+  if (paint_stroke && spot) {
+    continue_stroke(spot);
+  }
+});
+
+canvas.addEventListener("pointerup", finish_stroke);
+
+canvas.addEventListener("pointercancel", function () {
+  paint_stroke = null;
+});
+
+canvas.addEventListener("pointerleave", function () {
+  hover_spot = null;
+});
+
+var tool_buttons = document.querySelectorAll(".tool");
+for (var tool_index = 0; tool_index < tool_buttons.length; tool_index++) {
+  tool_buttons[tool_index].addEventListener("click", function (event) {
+    pick_tool(event.currentTarget.dataset.tool);
+  });
+}
+
+document.getElementById("cols-down").addEventListener("click", function () {
+  change_level_size(0, -1);
+});
+document.getElementById("cols-up").addEventListener("click", function () {
+  change_level_size(0, 1);
+});
+document.getElementById("rows-down").addEventListener("click", function () {
+  change_level_size(-1, 0);
+});
+document.getElementById("rows-up").addEventListener("click", function () {
+  change_level_size(1, 0);
+});
+document.getElementById("btn-play").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  start_playing_build();
+});
+document.getElementById("btn-edit").addEventListener("click", back_to_building);
+
 document.getElementById("mode-chip").addEventListener("click", function () {
   set_mode_list_open(!is_mode_list_open());
 });
@@ -1806,6 +2249,7 @@ document.addEventListener("keydown", function (event) {
 });
 
 apply_settings();
+draw_all_tool_icons();
 rebuild_routine_row();
 select_game_mode("tutorial");
 loop();
