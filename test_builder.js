@@ -2,6 +2,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const { WALL, create_board, cell_at, parse_board } = require("./board.js");
 const { create_mouse } = require("./mouse.js");
+const { allow_hidden_cheese } = require("./maze.js");
 const {
   build_start_mouse,
   tool_at,
@@ -28,7 +29,7 @@ function every_cheese_spot(board, previous_cheese) {
   const spots = new Set();
   for (let roll = 0; roll < 1; roll += 0.01) {
     const cheese = pick_build_cheese(board, previous_cheese, always(roll));
-    spots.add(cheese.row + "," + cheese.col);
+    spots.add(cheese.row + "," + cheese.col + "," + cheese.level);
   }
   return [...spots].sort();
 }
@@ -163,15 +164,34 @@ describe("cheese placement", () => {
   });
 
   it("can land on the start", () => {
-    assert.deepStrictEqual(every_cheese_spot(board_from(["S."]), null), ["0,0", "0,1"]);
+    assert.deepStrictEqual(every_cheese_spot(board_from(["S."]), null), ["0,0,0", "0,1,0"]);
   });
 
   it("lands on top of a wall the mouse can climb, never on the stairs", () => {
-    assert.deepStrictEqual(every_cheese_spot(board_from(["#", "U", "S"]), null), ["0,0", "2,0"]);
+    assert.deepStrictEqual(every_cheese_spot(board_from(["#", "U", "S"]), null), ["0,0,1", "2,0,0"]);
   });
 
-  it("never lands in a tunnel", () => {
-    assert.deepStrictEqual(every_cheese_spot(board_from([".", "H", "S"]), null), ["0,0", "2,0"]);
+  it("stays out of tunnels and from under bridges unless hidden cheese is allowed", () => {
+    assert.deepStrictEqual(every_cheese_spot(board_from([".", "H", "S"]), null), ["0,0,0", "2,0,0"]);
+    assert.deepStrictEqual(every_cheese_spot(board_from(["...", "SR+"]), null), ["0,0,0", "0,1,0", "0,2,0", "1,0,0", "1,2,1"]);
+  });
+
+  it("can land inside a tunnel when hidden cheese is allowed", () => {
+    allow_hidden_cheese(true);
+    const spots = every_cheese_spot(board_from([".", "H", "S"]), null);
+    allow_hidden_cheese(false);
+    assert.deepStrictEqual(spots, ["0,0,0", "1,0,0", "2,0,0"]);
+  });
+
+  it("can land under a bridge when hidden cheese is allowed, or up on its deck either way", () => {
+    allow_hidden_cheese(true);
+    const spots = every_cheese_spot(board_from(["...", "SR+"]), null);
+    allow_hidden_cheese(false);
+    assert.deepStrictEqual(spots, ["0,0,0", "0,1,0", "0,2,0", "1,0,0", "1,2,0", "1,2,1"]);
+  });
+
+  it("can land on top of a tunnel the mouse can climb onto", () => {
+    assert.deepStrictEqual(every_cheese_spot(board_from(["...", "SRH"]), null), ["0,0,0", "0,1,0", "0,2,0", "1,0,0", "1,2,1"]);
   });
 
   it("has room when the only spot away from the start is up some stairs", () => {
@@ -181,18 +201,18 @@ describe("cheese placement", () => {
   it("moves somewhere new after being found", () => {
     const board = board_from(["..", "S."]);
     for (let roll = 0; roll < 1; roll += 0.1) {
-      assert.notDeepStrictEqual(pick_build_cheese(board, { row: 0, col: 0 }, always(roll)), { row: 0, col: 0 });
+      assert.notDeepStrictEqual(pick_build_cheese(board, { row: 0, col: 0, level: 0 }, always(roll)), { row: 0, col: 0, level: 0 });
     }
   });
 
   it("goes back to the start when that is the only other spot", () => {
     const corridor = board_from(["S."]);
-    assert.deepStrictEqual(pick_build_cheese(corridor, { row: 0, col: 1 }, always(0)), { row: 0, col: 0 });
+    assert.deepStrictEqual(pick_build_cheese(corridor, { row: 0, col: 1, level: 0 }, always(0)), { row: 0, col: 0, level: 0 });
   });
 
   it("stays put when there is nowhere else to go", () => {
     const boxed_in = board_from(["#.", "S#"]);
-    assert.deepStrictEqual(pick_build_cheese(boxed_in, { row: 1, col: 0 }, always(0)), { row: 1, col: 0 });
+    assert.deepStrictEqual(pick_build_cheese(boxed_in, { row: 1, col: 0, level: 0 }, always(0)), { row: 1, col: 0, level: 0 });
   });
 });
 

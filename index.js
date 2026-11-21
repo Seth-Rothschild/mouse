@@ -15,7 +15,7 @@ var max_cell_size = 72;
 
 var start_mouse = create_mouse(3, 0, 0);
 var mouse = copy_mouse(start_mouse);
-var cheese = { row: 0, col: 0 };
+var cheese = { row: 0, col: 0, level: 0 };
 var levels_completed = 0;
 var celebration = null;
 
@@ -212,7 +212,7 @@ function is_mode_list_open() {
 }
 
 function load_settings() {
-  var settings = { sound_on: true, speed: 1, infinity_on: false, trial_goal: DEFAULT_TRIAL_GOAL };
+  var settings = { sound_on: true, speed: 1, infinity_on: false, hidden_cheese_on: false, trial_goal: DEFAULT_TRIAL_GOAL };
   try {
     var saved = JSON.parse(localStorage.getItem(settings_storage_key));
     if (saved) {
@@ -246,6 +246,8 @@ function update_settings_panel() {
   document.getElementById("infinity-on").classList.toggle("active", settings.infinity_on);
   document.getElementById("infinity-off").classList.toggle("active", !settings.infinity_on);
   document.getElementById("btn-infinity").hidden = !settings.infinity_on;
+  document.getElementById("hidden-cheese-on").classList.toggle("active", settings.hidden_cheese_on);
+  document.getElementById("hidden-cheese-off").classList.toggle("active", !settings.hidden_cheese_on);
   var speed_options = document.querySelectorAll(".speed-option");
   for (var i = 0; i < speed_options.length; i++) {
     var option_speed = Number(speed_options[i].dataset.speed);
@@ -278,6 +280,7 @@ function pick_trial_goal(goal) {
 function apply_settings() {
   ticks_per_step = Math.round(base_ticks_per_step / settings.speed);
   ticks_per_pause = Math.round(base_ticks_per_pause / settings.speed);
+  allow_hidden_cheese(settings.hidden_cheese_on);
   if (master_gain) {
     master_gain.gain.value = sound_volume();
   }
@@ -1585,14 +1588,21 @@ function draw_tunnel_overhang(row, col, axis) {
   tunnel.mouths.forEach(draw_tunnel_mouth);
 }
 
-function draw_tunnel_overhangs(tops, covered_cell) {
+var COVERED_TERRAIN_ALPHA = 0.4;
+
+function is_covered(covered_cells, row, col) {
+  return covered_cells.some(function (spot) {
+    return spot.row === row && spot.col === col;
+  });
+}
+
+function draw_tunnel_overhangs(tops, covered_cells) {
   for (var row = 0; row < board.rows; row++) {
     for (var col = 0; col < board.cols; col++) {
       var cell = cell_at(board, row, col);
       var is_overhung = cell.type === "tunnel" && has_walkable_top(tops, row, col);
       if (is_overhung) {
-        var is_covered = covered_cell !== null && covered_cell.row === row && covered_cell.col === col;
-        ctx.globalAlpha = is_covered ? 0.4 : 1;
+        ctx.globalAlpha = is_covered(covered_cells, row, col) ? COVERED_TERRAIN_ALPHA : 1;
         draw_tunnel_overhang(row, col, cell.axis);
       }
     }
@@ -1613,8 +1623,7 @@ function all_overhang_mouths(tops) {
   return mouths;
 }
 
-function draw_mouse_in_overhang_holes(pose, options, tops) {
-  var mouths = all_overhang_mouths(tops);
+function draw_inside_mouths(mouths, draw) {
   if (mouths.length === 0) {
     return;
   }
@@ -1624,8 +1633,31 @@ function draw_mouse_in_overhang_holes(pose, options, tops) {
     trace_mouth(mouth, 0);
   });
   ctx.clip();
-  draw_mouse(pose, options);
+  draw();
   ctx.restore();
+}
+
+function draw_mouse_in_overhang_holes(pose, options, tops) {
+  draw_inside_mouths(all_overhang_mouths(tops), function () {
+    draw_mouse(pose, options);
+  });
+}
+
+function plain_tunnel_mouths_at(spot, tops) {
+  var cell = cell_at(board, spot.row, spot.col);
+  var is_plain_tunnel = cell.type === "tunnel" && !has_walkable_top(tops, spot.row, spot.col);
+  if (!is_plain_tunnel) {
+    return [];
+  }
+  var boxes = tunnel_boxes(spot.row, spot.col, cell.axis);
+  return visible_tunnel_mouths(spot.row, spot.col, cell.axis, boxes);
+}
+
+function draw_cheese_in_holes(spot, tops) {
+  var mouths = all_overhang_mouths(tops).concat(plain_tunnel_mouths_at(spot, tops));
+  draw_inside_mouths(mouths, function () {
+    draw_cheese(spot);
+  });
 }
 
 var STAIR_STEP_COLORS = ["#a99087", "#9b7f75", WALL_FACE];
@@ -1649,14 +1681,13 @@ function draw_stairs(row, col, direction) {
   ctx.restore();
 }
 
-function draw_terrain_tops(covered_cell, tops) {
+function draw_terrain_tops(covered_cells, tops) {
   for (var row = 0; row < board.rows; row++) {
     for (var col = 0; col < board.cols; col++) {
       var cell = cell_at(board, row, col);
-      var is_covered = covered_cell !== null && covered_cell.row === row && covered_cell.col === col;
       ctx.globalAlpha = 1;
-      if (is_covered) {
-        ctx.globalAlpha = 0.4;
+      if (is_covered(covered_cells, row, col)) {
+        ctx.globalAlpha = COVERED_TERRAIN_ALPHA;
       }
       if (cell.type === "wall") {
         draw_block(row, col, WALL_FACE);
@@ -1673,8 +1704,8 @@ function draw_terrain_tops(covered_cell, tops) {
     }
   }
   ctx.globalAlpha = 1;
-  draw_tunnel_overhangs(tops, covered_cell);
-  draw_mouths_under_bridges_near(covered_cell);
+  draw_tunnel_overhangs(tops, covered_cells);
+  covered_cells.forEach(draw_mouths_under_bridges_near);
 }
 
 function covered_cell_for(pose) {
@@ -1688,6 +1719,24 @@ function covered_cell_for(pose) {
     return { row: row, col: col };
   }
   return null;
+}
+
+function is_tucked_under(spot) {
+  var cell = cell_at(board, spot.row, spot.col);
+  var is_covering = cell.type === "tunnel" || cell.type === "bridge";
+  return spot.level === 0 && is_covering;
+}
+
+function covered_cells_for(pose, cheese) {
+  var covered_cells = [];
+  var mouse_cell = covered_cell_for(pose);
+  if (mouse_cell !== null) {
+    covered_cells.push(mouse_cell);
+  }
+  if (cheese && is_tucked_under(cheese)) {
+    covered_cells.push({ row: cheese.row, col: cheese.col });
+  }
+  return covered_cells;
 }
 
 function draw_cheese(spot) {
@@ -1932,15 +1981,6 @@ function render() {
   ctx.save();
   ctx.translate(shake.x, shake.y);
 
-  draw_floor();
-  draw_treadmills();
-  var cheese_on_wall = cheese && cell_at(board, cheese.row, cheese.col).type === "wall";
-  if (cheese && !cheese_on_wall) {
-    draw_cheese(cheese);
-  }
-  draw_trail();
-
-  var pose = current_pose();
   var motion_intensity = current_motion_intensity();
   var draw_options = { stretch: motion_intensity };
 
@@ -1960,16 +2000,30 @@ function render() {
     draw_options.idle_bob = Math.sin(idle_t) * 0.04;
     draw_options.idle_pulse = Math.sin(idle_t * 1.3) * 0.015;
   }
+
+  draw_floor();
+  draw_treadmills();
+  var cheese_up_high = cheese && cheese.level === 1;
+  var cheese_down_low = cheese && cheese.level === 0;
+  if (cheese_down_low) {
+    draw_cheese(cheese);
+  }
+  draw_trail();
+
+  var pose = current_pose();
   draw_options.lifted = pose.level === 1;
   var tops = walkable_tops(board);
   if (!draw_options.lifted) {
     draw_mouse(pose, draw_options);
   }
-  draw_terrain_tops(covered_cell_for(pose), tops);
+  draw_terrain_tops(covered_cells_for(pose, cheese), tops);
+  if (cheese_down_low) {
+    draw_cheese_in_holes(cheese, tops);
+  }
   if (!draw_options.lifted) {
     draw_mouse_in_overhang_holes(pose, draw_options, tops);
   }
-  if (cheese_on_wall) {
+  if (cheese_up_high) {
     draw_cheese(cheese);
   }
   if (draw_options.lifted) {
@@ -2313,7 +2367,7 @@ function draw_tool_icon(tool) {
   draw_with_target(icon_ctx, icon_board, tool_icon_size, function () {
     draw_floor();
     draw_treadmills();
-    draw_terrain_tops(null, walkable_tops(board));
+    draw_terrain_tops([], walkable_tops(board));
   });
 }
 
@@ -2554,6 +2608,14 @@ document.getElementById("infinity-on").addEventListener("click", function () {
 
 document.getElementById("infinity-off").addEventListener("click", function () {
   change_settings({ infinity_on: false });
+});
+
+document.getElementById("hidden-cheese-on").addEventListener("click", function () {
+  change_settings({ hidden_cheese_on: true });
+});
+
+document.getElementById("hidden-cheese-off").addEventListener("click", function () {
+  change_settings({ hidden_cheese_on: false });
 });
 
 var speed_options = document.querySelectorAll(".speed-option");

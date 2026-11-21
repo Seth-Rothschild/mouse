@@ -238,7 +238,7 @@ function parse_board(lines) {
         start = { row: row, col: col };
       }
       if (symbol === "C") {
-        cheese = { row: row, col: col };
+        cheese = { row: row, col: col, level: 0 };
       }
     }
   }

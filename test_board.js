@@ -216,7 +216,7 @@ describe("parse_board", () => {
   it("reads symbols into cells and finds the start and cheese", () => {
     const parsed = parse_board(["S#C", "=H>", "+L."]);
     assert.deepStrictEqual(parsed.start, { row: 0, col: 0 });
-    assert.deepStrictEqual(parsed.cheese, { row: 0, col: 2 });
+    assert.deepStrictEqual(parsed.cheese, { row: 0, col: 2, level: 0 });
     assert.strictEqual(cell_at(parsed.board, 0, 1).type, "wall");
     assert.strictEqual(cell_at(parsed.board, 1, 0).type, "tunnel");
     assert.strictEqual(cell_at(parsed.board, 1, 0).axis, "horizontal");

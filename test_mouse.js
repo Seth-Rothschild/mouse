@@ -291,10 +291,18 @@ describe("count_expanded_steps", () => {
 
 describe("reached_cheese", () => {
   it("is true only when row and col both match", () => {
-    const cheese = { row: 0, col: 6 };
+    const cheese = { row: 0, col: 6, level: 0 };
     assert.strictEqual(reached_cheese(create_mouse(0, 6, 0), cheese), true);
     assert.strictEqual(reached_cheese(create_mouse(0, 5, 0), cheese), false);
     assert.strictEqual(reached_cheese(create_mouse(1, 6, 0), cheese), false);
+  });
+
+  it("misses cheese under a bridge when walking over it, and the other way round", () => {
+    const under = { row: 0, col: 6, level: 0 };
+    const over = { row: 0, col: 6, level: 1 };
+    assert.strictEqual(reached_cheese(create_mouse(0, 6, 0, 1), under), false);
+    assert.strictEqual(reached_cheese(create_mouse(0, 6, 0, 0), over), false);
+    assert.strictEqual(reached_cheese(create_mouse(0, 6, 0, 1), over), true);
   });
 });
 

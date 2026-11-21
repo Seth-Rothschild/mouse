@@ -1,7 +1,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const {
-  reachable_floor_cells,
+  reachable_cheese_cells,
   generate_maze,
   generate_tutorial,
   pick_tunnel,
@@ -24,6 +24,11 @@ function cells_of_type(board, type) {
     }
   }
   return found;
+}
+
+function can_reach_cheese(board, mouse, cheese) {
+  const reachable = reachable_cheese_cells(board, mouse);
+  return reachable.some((spot) => spot.row === cheese.row && spot.col === cheese.col && spot.level === cheese.level);
 }
 
 function tunnel_end_cells(board, cell) {
@@ -56,12 +61,11 @@ function seeded_random(seed) {
 }
 
 describe("generate_maze", () => {
-  it("always puts the cheese on a floor cell the mouse can reach", () => {
+  it("always puts the cheese somewhere the mouse can reach", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const start = create_mouse(2, 0, 0);
       const maze = generate_maze(3, 4, start, seeded_random(seed));
-      const reachable = reachable_floor_cells(maze.board, start);
-      const found = reachable.some((cell) => cell.row === maze.cheese.row && cell.col === maze.cheese.col);
+      const found = can_reach_cheese(maze.board, start, maze.cheese);
       assert.ok(found, "seed " + seed);
       assert.strictEqual(cell_at(maze.board, 2, 0).type, "floor");
     }
@@ -89,8 +93,7 @@ describe("full size boards", () => {
       if (tunnels.length > 0) {
         boards_with_tunnels += 1;
       }
-      const reachable = reachable_floor_cells(puzzle.board, start);
-      const found = reachable.some((cell) => cell.row === puzzle.cheese.row && cell.col === puzzle.cheese.col);
+      const found = can_reach_cheese(puzzle.board, start, puzzle.cheese);
       assert.ok(found, "seed " + seed);
     }
     assert.ok(boards_with_tunnels >= 15);
@@ -130,8 +133,7 @@ describe("generate_tutorial", () => {
       assert.ok(has_clear_ends(tutorial.board, tunnels[0]), "seed " + seed);
       assert.strictEqual(cell_at(tutorial.board, 3, 0).type, "floor");
 
-      const reachable = reachable_floor_cells(tutorial.board, start);
-      const cheese_found = reachable.some((cell) => cell.row === tutorial.cheese.row && cell.col === tutorial.cheese.col);
+      const cheese_found = can_reach_cheese(tutorial.board, start, tutorial.cheese);
       assert.ok(cheese_found, "seed " + seed);
     }
   });
@@ -160,8 +162,7 @@ describe("grow_maze", () => {
       }
 
       const shifted = create_mouse(mouse.row + grown.row_shift, mouse.col, 0);
-      const reachable = reachable_floor_cells(grown.board, shifted);
-      const found = reachable.some((cell) => cell.row === grown.cheese.row && cell.col === grown.cheese.col);
+      const found = can_reach_cheese(grown.board, shifted, grown.cheese);
       assert.ok(found, "seed " + seed);
     }
   });
@@ -183,7 +184,7 @@ describe("grow_maze", () => {
 });
 
 describe("move_cheese", () => {
-  it("picks a new reachable floor cell away from the mouse on the same board", () => {
+  it("picks a new reachable spot away from the mouse on the same board", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const random = seeded_random(seed);
       const start = create_mouse(MAX_MAZE_ROWS - 1, 0, 0);
@@ -192,9 +193,7 @@ describe("move_cheese", () => {
       const moved = move_cheese(puzzle.board, mouse, random);
       const same_cell = moved.row === puzzle.cheese.row && moved.col === puzzle.cheese.col;
       assert.ok(!same_cell, "seed " + seed);
-      assert.strictEqual(cell_at(puzzle.board, moved.row, moved.col).type, "floor");
-      const reachable = reachable_floor_cells(puzzle.board, mouse);
-      assert.ok(reachable.some((cell) => cell.row === moved.row && cell.col === moved.col));
+      assert.ok(can_reach_cheese(puzzle.board, mouse, moved), "seed " + seed);
     }
   });
 });

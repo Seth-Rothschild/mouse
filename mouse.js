@@ -320,7 +320,7 @@ function plan_run(program, start_mouse, board) {
 }
 
 function reached_cheese(mouse, cheese) {
-  return mouse.row === cheese.row && mouse.col === cheese.col;
+  return mouse.row === cheese.row && mouse.col === cheese.col && mouse.level === cheese.level;
 }
 
 function start_playback(program, start_mouse, board) {
