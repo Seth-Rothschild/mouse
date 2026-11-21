@@ -32,7 +32,7 @@ var base_ticks_per_pause = 16;
 var ticks_per_step = base_ticks_per_step;
 var ticks_per_pause = base_ticks_per_pause;
 
-var settings_storage_key = "pseudo-mouse-settings";
+var settings_storage_key = "mouse-settings";
 var speed_choices = [1, 2];
 var settings = load_settings();
 
