@@ -15,6 +15,7 @@ const {
   decode_board,
   build_hash,
   board_from_hash,
+  trial_goal_from_hash,
 } = require("./builder.js");
 
 function board_from(lines) {
@@ -219,7 +220,37 @@ describe("cheese placement", () => {
 describe("sharing a build", () => {
   it("writes every kind of terrain as one letter per square", () => {
     const board = board_from(["#=H+", "URDL", "S..."]);
-    assert.strictEqual(encode_board(board), "whvb-urdl-....");
+    assert.strictEqual(encode_board(board), "whvb-urdl-ffff");
+  });
+
+  it("never ends a link in punctuation that chat apps strip", () => {
+    const board = board_from(["#.", "S."]);
+    const hash = build_hash(board, 5);
+    assert.match(hash, /[a-z0-9]$/);
+  });
+
+  it("carries the time trial goal in the link", () => {
+    const board = board_from(["#.", "S="]);
+    const hash = build_hash(board, 10);
+    assert.strictEqual(trial_goal_from_hash(hash), 10);
+  });
+
+  it("has no trial goal for links shared before trials were added", () => {
+    assert.strictEqual(trial_goal_from_hash("#build=w.-.h"), null);
+    assert.strictEqual(trial_goal_from_hash("#build=wf-fh&trial=lots"), null);
+    assert.strictEqual(trial_goal_from_hash("#other=5"), null);
+  });
+
+  it("still reads the board from a link with a trial goal", () => {
+    const board = board_from(["#.", "S="]);
+    const hash = build_hash(board, 3);
+    assert.deepStrictEqual(board_from_hash(hash), board);
+  });
+
+  it("still reads links shared before floors were letters", () => {
+    const old_board = decode_board("w.-.h");
+    const new_board = decode_board("wf-fh");
+    assert.deepStrictEqual(old_board, new_board);
   });
 
   it("reads back the same board it wrote", () => {
@@ -229,8 +260,8 @@ describe("sharing a build", () => {
 
   it("round trips through the address bar", () => {
     const board = board_from(["#.", "S="]);
-    const hash = build_hash(board);
-    assert.strictEqual(hash, "#build=w.-.h");
+    const hash = build_hash(board, 5);
+    assert.strictEqual(hash, "#build=wf-fh&trial=5");
     assert.deepStrictEqual(board_from_hash(hash), board);
   });
 

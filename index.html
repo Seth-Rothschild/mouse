@@ -524,6 +524,9 @@
         .trial-goal-picker {
             margin-bottom: 6px;
         }
+        .trial-goal-picker[hidden] {
+            display: none;
+        }
         .trial-blurb {
             margin: 0 0 6px;
             font-size: 16px;
@@ -557,6 +560,9 @@
         }
         .trial-chip[hidden] {
             display: none;
+        }
+        .edit-chip {
+            background: var(--turn-right);
         }
 
         body.building canvas {
@@ -1115,6 +1121,7 @@
         <header class="top-bar">
             <h1 class="title">Pseudo Mouse</h1>
             <div class="top-bar-actions">
+                <button class="trial-chip edit-chip" id="btn-edit" title="Back to building this level" hidden>✎<span class="trial-chip-label"> Edit</span></button>
                 <button class="trial-chip" id="btn-trial" title="Time trial: find 10 cheeses on this map" hidden>⏱<span class="trial-chip-label"> Trial</span></button>
                 <div class="mode-menu">
                     <button class="mode-chip" id="mode-chip" aria-haspopup="true" aria-expanded="false">
@@ -1234,7 +1241,7 @@
                 </div>
             </div>
             <button class="action-button" id="btn-play" title="Play your level">▶ PLAY</button>
-            <button class="action-button" id="btn-share" title="Copy a link to your level">SHARE</button>
+            <button class="action-button" id="btn-share" title="Copy a time trial link to your level">SHARE</button>
         </div>
     </div>
     <div class="sidebar">

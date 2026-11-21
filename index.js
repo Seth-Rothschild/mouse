@@ -61,6 +61,8 @@ var trial = create_trial(settings.trial_goal);
 
 var custom_board = create_board(5, 7);
 var fixed_board = null;
+var shared_trial_goal = null;
+var testing_build = false;
 var build_tool = "wall";
 var tool_orientations = { tunnel: "horizontal", stairs: 0 };
 var paint_stroke = null;
@@ -264,12 +266,21 @@ function update_trial_goal_picker() {
   }
   var goal_counts = document.querySelectorAll(".trial-goal-count");
   for (var j = 0; j < goal_counts.length; j++) {
-    goal_counts[j].textContent = String(settings.trial_goal);
+    goal_counts[j].textContent = String(trial.goal);
   }
+  var goal_is_shared = shared_trial_goal !== null;
+  document.querySelector(".trial-goal-picker").hidden = goal_is_shared;
+}
+
+function current_trial_goal() {
+  if (shared_trial_goal !== null) {
+    return shared_trial_goal;
+  }
+  return settings.trial_goal;
 }
 
 function pick_trial_goal(goal) {
-  if (trial.phase !== "waiting") {
+  if (trial.phase !== "waiting" || shared_trial_goal !== null) {
     return;
   }
   change_settings({ trial_goal: goal });
@@ -304,7 +315,10 @@ function is_settings_panel_open() {
 
 function select_game_mode(new_mode) {
   game_mode = new_mode;
-  trial = create_trial(settings.trial_goal);
+  if (game_mode !== "time_trial") {
+    shared_trial_goal = null;
+  }
+  trial = create_trial(current_trial_goal());
   if (game_mode === "time_trial") {
     routines = [];
     rebuild_routine_row();
@@ -332,6 +346,7 @@ function select_game_mode(new_mode) {
   update_status();
   update_mode_menu();
   update_trial_overlays();
+  update_trial_goal_picker();
   update_build_ui();
   rebuild_slots();
   refresh_buttons();
@@ -994,6 +1009,7 @@ function refresh_buttons() {
   document.getElementById("btn-reset").disabled = trial_locked;
   document.getElementById("mode-chip").disabled = executing;
   document.getElementById("btn-trial").disabled = executing;
+  document.getElementById("btn-edit").disabled = executing;
   if (executing) {
     set_mode_list_open(false);
   }
@@ -2236,6 +2252,7 @@ function build_status_text() {
 function update_build_ui() {
   document.body.classList.toggle("building", is_building());
   document.getElementById("btn-trial").hidden = game_mode !== "puzzle";
+  document.getElementById("btn-edit").hidden = !testing_build || is_building();
   if (game_mode === "build") {
     update_tool_tiles();
     update_size_controls();
@@ -2253,7 +2270,7 @@ function load_custom_board() {
 
 function share_url() {
   var page = location.href.split("#")[0];
-  return page + build_hash(custom_board);
+  return page + build_hash(custom_board, settings.trial_goal);
 }
 
 function ask_to_copy_by_hand(url) {
@@ -2268,7 +2285,8 @@ function share_build() {
   }
   navigator.clipboard.writeText(url).then(
     function () {
-      set_message("Link copied!", "win");
+      var copied_text = "Link copied! " + settings.trial_goal + "-cheese time trial";
+      set_message(copied_text, "win");
       play_click_sound();
     },
     function () {
@@ -2279,12 +2297,19 @@ function share_build() {
 
 function load_shared_build() {
   var shared_board = board_from_hash(location.hash);
+  var trial_goal = trial_goal_from_hash(location.hash);
   clear_address_hash();
   if (shared_board === null || !has_room_for_cheese(shared_board)) {
-    return false;
+    return null;
   }
   fixed_board = shared_board;
-  return true;
+  testing_build = false;
+  var goal_is_allowed = TRIAL_GOAL_CHOICES.indexOf(trial_goal) !== -1;
+  if (!goal_is_allowed) {
+    return "puzzle";
+  }
+  shared_trial_goal = trial_goal;
+  return "time_trial";
 }
 
 function clear_address_hash() {
@@ -2313,7 +2338,16 @@ function start_playing_build() {
   paint_stroke = null;
   hover_spot = null;
   fixed_board = custom_board;
+  testing_build = true;
   select_game_mode("puzzle");
+}
+
+function return_to_building() {
+  if (mode === "executing") {
+    return;
+  }
+  fixed_board = null;
+  select_game_mode("build");
 }
 
 function start_trial_on_this_map() {
@@ -2573,6 +2607,10 @@ document.getElementById("btn-share").addEventListener("click", function (event) 
   share_build();
 });
 document.getElementById("btn-trial").addEventListener("click", start_trial_on_this_map);
+document.getElementById("btn-edit").addEventListener("click", function (event) {
+  flash_button(event.currentTarget);
+  return_to_building();
+});
 
 document.getElementById("mode-chip").addEventListener("click", function () {
   set_mode_list_open(!is_mode_list_open());
@@ -2586,6 +2624,8 @@ for (var mode_index = 0; mode_index < mode_options.length; mode_index++) {
       return;
     }
     fixed_board = null;
+    shared_trial_goal = null;
+    testing_build = false;
     select_game_mode(event.currentTarget.dataset.mode);
   });
 }
@@ -2651,21 +2691,22 @@ document.addEventListener("keydown", function (event) {
 });
 
 window.addEventListener("hashchange", function () {
-  if (!load_shared_build()) {
+  var shared_mode = load_shared_build();
+  if (shared_mode === null) {
     return;
   }
   set_mode_list_open(false);
   set_settings_panel_open(false);
   reset_program();
-  select_game_mode("puzzle");
+  select_game_mode(shared_mode);
 });
 
 apply_settings();
 draw_all_tool_icons();
 rebuild_routine_row();
-if (load_shared_build()) {
-  select_game_mode("puzzle");
-} else {
-  select_game_mode("tutorial");
+var starting_mode = load_shared_build();
+if (starting_mode === null) {
+  starting_mode = "tutorial";
 }
+select_game_mode(starting_mode);
 loop();

@@ -191,10 +191,13 @@ function pick_build_cheese(board, previous_cheese, random) {
 
 var BUILD_HASH_PREFIX = "#build=";
 var ROW_SEPARATOR = "-";
+var HASH_PART_SEPARATOR = "&";
+var TRIAL_GOAL_PREFIX = "trial=";
 var TUNNEL_CODES = { horizontal: "h", vertical: "v" };
 var STAIRS_CODES = ["u", "r", "d", "l"];
-var PLAIN_CODES = { floor: ".", wall: "w", bridge: "b" };
+var PLAIN_CODES = { floor: "f", wall: "w", bridge: "b" };
 var CELLS_BY_CODE = {
+  f: FLOOR,
   ".": FLOOR,
   w: WALL,
   b: BRIDGE,
@@ -262,16 +265,39 @@ function decode_board(code) {
   return board;
 }
 
-function build_hash(board) {
-  return BUILD_HASH_PREFIX + encode_board(board);
+function build_hash(board, trial_goal) {
+  var board_part = BUILD_HASH_PREFIX + encode_board(board);
+  var trial_part = HASH_PART_SEPARATOR + TRIAL_GOAL_PREFIX + trial_goal;
+  return board_part + trial_part;
+}
+
+function hash_parts(hash) {
+  if (!hash.startsWith(BUILD_HASH_PREFIX)) {
+    return [];
+  }
+  return hash.slice(BUILD_HASH_PREFIX.length).split(HASH_PART_SEPARATOR);
 }
 
 function board_from_hash(hash) {
-  if (!hash.startsWith(BUILD_HASH_PREFIX)) {
+  var parts = hash_parts(hash);
+  if (parts.length === 0) {
     return null;
   }
-  var code = hash.slice(BUILD_HASH_PREFIX.length);
-  return decode_board(code);
+  return decode_board(parts[0]);
+}
+
+function trial_goal_from_hash(hash) {
+  var parts = hash_parts(hash);
+  for (var i = 1; i < parts.length; i++) {
+    if (!parts[i].startsWith(TRIAL_GOAL_PREFIX)) {
+      continue;
+    }
+    var goal = Number(parts[i].slice(TRIAL_GOAL_PREFIX.length));
+    if (Number.isInteger(goal) && goal > 0) {
+      return goal;
+    }
+  }
+  return null;
 }
 
 if (typeof module !== "undefined") {
@@ -297,5 +323,6 @@ if (typeof module !== "undefined") {
     decode_board,
     build_hash,
     board_from_hash,
+    trial_goal_from_hash,
   };
 }
