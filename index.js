@@ -395,7 +395,7 @@ function set_message(text, tone) {
   element.classList.add("shown", tone);
   message_timer = setTimeout(function () {
     element.classList.remove("shown");
-  }, 2600);
+  }, 1400);
 }
 
 function step_appearance(step) {
